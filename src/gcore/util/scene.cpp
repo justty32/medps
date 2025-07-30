@@ -1,7 +1,7 @@
 #include "scene.hpp"
 #include <fstream>
 
-void Scene::Save(std::ostrstream& fs)
+void Scene::Save(BinFSR::ostream_t& fs)
 {
 	this->base_class_t::Save(fs);
 	size_t size = objs.size();
@@ -19,7 +19,7 @@ void Scene::Save(std::ostrstream& fs)
 	}
 }
 
-void Scene::Load(std::istrstream& fs)
+void Scene::Load(BinFSR::istream_t& fs)
 {
 	this->base_class_t::Load(fs);
 	size_t size = 0;

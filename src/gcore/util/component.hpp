@@ -5,8 +5,8 @@ class ComponentManager;
 class Component : public Obj {
 	OBJ_INIT_DEF(11, Component, Obj)
 public:
-	void Save(std::ostrstream& fs) override;
-	void Load(std::istrstream& fs) override;
+	void Save(BinFSR::ostream_t& fs) override;
+	void Load(BinFSR::istream_t& fs) override;
 	ComponentManager* comp_mg;
 };
 
@@ -14,8 +14,8 @@ public:
 class ComponentManager : public Obj {
 	OBJ_INIT_DEF(12, Component, Obj)
 public:
-	void Save(std::ostrstream& fs) override;
-	void Load(std::istrstream& fs) override;
+	void Save(BinFSR::ostream_t& fs) override;
+	void Load(BinFSR::istream_t& fs) override;
 	std::map<int, Component*> comps;
 	inline Component* GetComp(int type_id) {
 		if (auto it = comps.find(type_id); it != comps.end()) return it->second;
@@ -61,7 +61,6 @@ public:
 	inline void DeleteComp(int type_id) {
 		Component* c = RemoveComp(type_id);
 		if (c != nullptr) delete c;
-		return;
 	}
 	template<typename T> requires std::is_base_of_v<Component, T>
 	inline void DeleteComp() { DeleteComp(T::GetTypeID()); }

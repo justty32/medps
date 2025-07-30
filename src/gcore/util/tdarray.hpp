@@ -37,12 +37,12 @@ public:
 	tdarray(size_t sizex, size_t sizey): tdarray(){
 		alloc(sizex, sizey);
 	}
-	void Save(std::ostrstream& fs) {
+	void Save(BinFSR::ostream_t& fs) {
 		BinFSR::write(&sx, fs);
 		BinFSR::write(&sy, fs);
 		BinFSR::write(&vec, fs);
 	}
-	void Load(std::istrstream& fs) {
+	void Load(BinFSR::istream_t& fs) {
 		BinFSR::read(&sx, fs);
 		BinFSR::read(&sy, fs);
 		vec.resize(sx * sy);

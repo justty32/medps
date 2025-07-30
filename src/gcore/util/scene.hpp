@@ -9,8 +9,8 @@ class Scene : public Obj{
 public:
 	std::vector<Obj*> objs;
 	std::list<int> empty_id_pool;
-	void Save(std::ostrstream& fs) override;
-	void Load(std::istrstream& fs) override;
+	void Save(BinFSR::ostream_t& fs) override;
+	void Load(BinFSR::istream_t& fs) override;
 	// new obj
 	inline Obj* NewObj(int type_id) {
 		Obj* obj = Obj::_g_default_constructors[type_id]();

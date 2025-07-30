@@ -2,17 +2,24 @@
 
 #include "../util.h"
 
-class World : public Scene {
-	OBJ_INIT_DEF(1001, World, Scene)
-public:
-	virtual void Save(std::ostrstream& fs);
-	virtual void Load(std::istrstream& fs);
-};
+namespace BigMap {
+	constexpr int _ID_BEGIN = 200000;
 
+	struct Tile {
+		int terrain;
+	};
+	class TileMap : public Component, public tdarray<Tile> {
+		OBJ_INIT_DEF(_ID_BEGIN + 10, TileMap, Component)
+	public:
+		void Save(BinFSR::ostream_t& fs) override;
+		void Load(BinFSR::istream_t& fs) override;
+	};
 
-// space : map, 
-// time : event
-// obj : c
+	class MapEntity : public Component {
+		OBJ_INIT_DEF(_ID_BEGIN + 11, TileMap, Component)
+
+	};
+}
 
 struct BigMapTile {
 	int terrain;

@@ -1,19 +1,21 @@
 #pragma once
-#include <strstream>
+#include <sstream>
 #include <vector>
 
 // binary stream write/read
 namespace BinFSR {
+	using istream_t = std::istringstream;
+	using ostream_t = std::ostringstream;
 	template<typename T>
-	inline void read(T* t, std::istrstream& fs) {
+	inline void read(T* t, istream_t& fs) {
 		fs.read((char*)t, sizeof(T));
 	}
 	template<typename T>
-	inline void write(T* t, std::ostrstream& fs) {
+	inline void write(T* t, ostream_t& fs) {
 		fs.write((char*)t, sizeof(T));
 	}
 	template<typename T>
-	void read(std::vector<T>* vec, std::istrstream& fs) {
+	void read(std::vector<T>* vec, istream_t& fs) {
 		size_t size = 0;
 		read(&size, fs);
 		vec->resize(size);
@@ -21,7 +23,7 @@ namespace BinFSR {
 			read(&(vec->at(i)), fs);
 	}
 	template<typename T>
-	void write(std::vector<T>* vec, std::ostrstream& fs) {
+	void write(std::vector<T>* vec, ostream_t& fs) {
 		size_t size = vec->size();
 		write(&size, fs);
 		for (int i = 0; i < size; i++)

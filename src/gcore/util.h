@@ -9,3 +9,5 @@
 // _obj_type_id_end   : 3000
 // 0. Obj
 // 1. Scene
+// 11. Component
+// 12. ComponentManager

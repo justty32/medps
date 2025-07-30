@@ -15,7 +15,7 @@
 	using base_class_t = BASE_CLASS;\
 	friend class Obj;\
 public:\
-	inline static int GetTypeID() { return TYPE_ID; }
+	inline static consteval int GetTypeID() { return TYPE_ID; }
 
 // use at _init_subtypes() or _init_all_subtypes()
 // ex. OBJ_TYPE_LIST_REGISTER_CLASS(Obj)
@@ -24,8 +24,8 @@ public:\
 
 // if the obj type doesn't have any vars to save, use this
 #define OBJ_DEFINE_DEFAULT_SAVELOAD()\
-	inline void Save(std::ostrstream& fs) override { this->base_class_t::Save(fs); /*...*/}\
-	inline void Load(std::istrstream& fs) override { this->base_class_t::Load(fs); /*...*/}
+	inline void Save(BinFSR::ostream_t& fs) override { this->base_class_t::Save(fs); /*...*/}\
+	inline void Load(BinFSR::istream_t& fs) override { this->base_class_t::Load(fs); /*...*/}
 
 class Obj;
 class Scene;
@@ -37,15 +37,15 @@ int GetObjTypeID() { return T::GetTypeID(); }
 // class SomeObjType : public Obj {
 //     OBJ_INIT_DEF(<unique number>, SomeObjType, Obj)
 // public:
-//     void Save(std::ostrstream& fs);
-//     void Load(std::istrstream& fs);
+//     void Save(BinFSR::ostream_t& fs);
+//     void Load(BinFSR::istream_t& fs);
 class Obj {
 public:
 	int id = 0;
 	Scene* scene = nullptr;
-	static int GetTypeID() { return 0; }
-	virtual void Save(std::ostrstream& fs);
-	virtual void Load(std::istrstream& fs);
+	static consteval int GetTypeID() { return 0; }
+	virtual void Save(BinFSR::ostream_t& fs);
+	virtual void Load(BinFSR::istream_t& fs);
 	static std::map<int, std::function<Obj*()>> _g_default_constructors; // {type, constructor}
 private:
 	// defined at class_list.cpp
