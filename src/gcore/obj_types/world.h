@@ -84,3 +84,15 @@ struct City : Positioned {
 	int gen_food, gen_gold, gen_prod, gen_sci;
 	int st_food, st_gold, st_prod, st_sci;
 };
+
+
+struct Soldier {
+	int body, mind, train, equiment;
+};
+
+struct SoldierType {
+	int gender, race;
+	int base_attr;
+	int skills;
+
+};
