@@ -12,7 +12,7 @@ void Scene::Save(BinFSR::ostream_t& fs)
 			BinFSR::write(&badtid, fs);
 		}
 		else {
-			tid = objs[i]->GetTypeID();
+			tid = objs[i]->GetTypeIDV();
 			BinFSR::write(&tid, fs);
 			objs[i]->Save(fs);
 		}

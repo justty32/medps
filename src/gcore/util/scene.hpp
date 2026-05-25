@@ -18,11 +18,11 @@ public:
 		return obj;
 	}
 	template<typename T>
-	requires std::is_base_of_v<T, Obj>
+	requires std::is_base_of_v<Obj, T>
 	inline T* NewObj() { return (T*)NewObj(T::GetTypeID()); }
 	// add obj
 	template<typename T>
-	requires std::is_base_of_v<T, Obj>
+	requires std::is_base_of_v<Obj, T>
 	inline int AddObj(T* obj) {
 		if (empty_id_pool.empty() == false) {
 			obj->id = empty_id_pool.front();
@@ -45,7 +45,7 @@ public:
 	}
 	// get obj
 	template<typename T = Obj>
-	requires std::is_base_of_v<T, Obj>
+	requires std::is_base_of_v<Obj, T>
 	inline T* GetObj(int id) {
 		if (id < 0 || id >= objs.size()) return nullptr;
 		return (T*)objs[id]; 

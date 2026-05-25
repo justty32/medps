@@ -12,7 +12,7 @@ public:
 
 // will inherit with Obj
 class ComponentManager : public Obj {
-	OBJ_INIT_DEF(12, Component, Obj)
+	OBJ_INIT_DEF(12, ComponentManager, Obj)
 public:
 	void Save(BinFSR::ostream_t& fs) override;
 	void Load(BinFSR::istream_t& fs) override;
@@ -27,13 +27,13 @@ public:
 	template<typename T> requires std::is_base_of_v<Component, T>
 	inline bool HasComp() { return HasComp(T::GetTypeID()); }
 	inline void AddComp(Component* comp) {
-		if (auto it = comps.find(comp->GetTypeID()); it != comps.end()) {
+		if (auto it = comps.find(comp->GetTypeIDV()); it != comps.end()) {
 			Component* old = it->second;
 			delete old;
 			it->second = comp;
 		}
 		else {
-			comps[comp->GetTypeID()] = comp; 
+			comps[comp->GetTypeIDV()] = comp;
 		}
 	}
 	inline Component* NewComp(int type_id) {

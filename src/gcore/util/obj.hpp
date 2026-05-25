@@ -15,7 +15,8 @@
 	using base_class_t = BASE_CLASS;\
 	friend class Obj;\
 public:\
-	inline static consteval int GetTypeID() { return TYPE_ID; }
+	inline static consteval int GetTypeID() { return TYPE_ID; }\
+	inline int GetTypeIDV() const override { return TYPE_ID; }
 
 // use at _init_subtypes() or _init_all_subtypes()
 // ex. OBJ_TYPE_LIST_REGISTER_CLASS(Obj)
@@ -44,6 +45,7 @@ public:
 	int id = 0;
 	Scene* scene = nullptr;
 	static consteval int GetTypeID() { return 0; }
+	virtual int GetTypeIDV() const { return 0; }
 	virtual void Save(BinFSR::ostream_t& fs);
 	virtual void Load(BinFSR::istream_t& fs);
 	static std::map<int, std::function<Obj*()>> _g_default_constructors; // {type, constructor}
