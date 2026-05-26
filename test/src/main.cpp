@@ -2,6 +2,8 @@
 #include <gcore/components/cross_zone_ref.h>
 #include <gcore/components/zone_meta.h>
 #include <gcore/components/child_zone_summary.h>
+#include <gcore/components/position.h>
+#include <gcore/components/owner.h>
 #include <gcore/serialize/zone_io.h>
 #include <gcore/serialize/zone_store.h>
 #include <gcore/global_manager.h>
@@ -271,6 +273,68 @@ static bool test_save_load_root() {
     return true;
 }
 
+static bool test_position_roundtrip() {
+    entt::registry src;
+    auto e = src.create();
+    src.emplace<Position>(e, 3, 4);
+
+    std::stringstream ss;
+    zone_io::save(src, ss);
+
+    entt::registry dst;
+    zone_io::load(dst, ss);
+
+    auto view = dst.view<Position>();
+    int count = 0; bool ok = false;
+    for (auto en : view) { auto& p = view.get<Position>(en); ok = (p.x == 3 && p.y == 4); ++count; }
+    CHECK("position count", count == 1);
+    CHECK("position data",  ok);
+    return true;
+}
+
+static bool test_owner_resolves_to_root_faction() {
+    GlobalManager gm;
+    // faction is a global entity in root
+    auto faction = gm.root.create();
+
+    // a unit lives in an area zone, owned by that faction (cross-zone ref)
+    auto areaKey = make_zone_key(ZoneType{2}, 1, 1, 0);
+    auto& area = gm.create(areaKey, ZONE_ROOT);
+    auto unit = area.create();
+    area.emplace<Position>(unit, 5, 6);
+    area.emplace<Owner>(unit, CrossZoneRef{ZONE_ROOT, faction});
+
+    // resolve the unit's owner back to the root faction entity
+    auto& own = area.get<Owner>(unit);
+    auto res = gm.resolve(own.faction);
+
+    CHECK("owner resolves to root", res.reg == &gm.root);
+    CHECK("owner entity is faction", res.entity == faction);
+    CHECK("owner valid",             res.valid());
+    return true;
+}
+
+static bool test_owner_roundtrip() {
+    // Owner (wrapping a CrossZoneRef) must survive serialization
+    entt::registry src;
+    auto e = src.create();
+    src.emplace<Owner>(e, CrossZoneRef{ZONE_ROOT, entt::entity{77}});
+
+    std::stringstream ss;
+    zone_io::save(src, ss);
+
+    entt::registry dst;
+    zone_io::load(dst, ss);
+
+    bool ok = false;
+    for (auto en : dst.view<Owner>()) {
+        auto& o = dst.get<Owner>(en);
+        ok = (o.faction.zone == ZONE_ROOT && o.faction.local_entity == entt::entity{77});
+    }
+    CHECK("owner ref survived", ok);
+    return true;
+}
+
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -300,6 +364,9 @@ int main() {
         { "child_summary_roundtrip",    test_child_summary_roundtrip    },
         { "zone_path_deterministic",    test_zone_path_deterministic    },
         { "save_load_root",             test_save_load_root             },
+        { "position_roundtrip",         test_position_roundtrip         },
+        { "owner_resolves_faction",     test_owner_resolves_to_root_faction },
+        { "owner_roundtrip",            test_owner_roundtrip            },
         { "serialize_empty",            test_serialize_empty            },
     };
 
