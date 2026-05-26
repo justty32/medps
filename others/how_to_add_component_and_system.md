@@ -1,6 +1,7 @@
 # 如何新增 Component 與 System
 
-> 本文以「技能（Skill）系統」為例，完整走一遍新增一個 component 與對應 system 的流程。
+> 本文走一遍在 medps 新增 component 與 per-zone system 的實際流程。
+> 對應程式碼:`src/gcore/components/`、`src/gcore/systems/`、`src/gcore/serialize/all_components.h`、`src/gcore/global_manager.{h,cpp}`。
 
 ---
 
@@ -12,25 +13,21 @@
 // src/gcore/components/skill.h
 #pragma once
 #include <cstdint>
-#include <vector>
-#include <cereal/types/vector.hpp>
 
 struct Skill {
     uint32_t skill_id{};
-    float    cooldown{};      // 目前冷卻剩餘秒數
-    float    max_cooldown{};
+    int      cooldown{};      // 剩餘冷卻回合數
 
     template<class Archive>
-    void serialize(Archive& ar) {
-        ar(skill_id, cooldown, max_cooldown);
-    }
+    void serialize(Archive& ar) { ar(skill_id, cooldown); }
 };
 ```
 
-規則：
-- Component 盡量是 POD aggregate，不帶虛擬函式。
-- STL 成員（`std::vector`、`std::string` 等）需對應引入 cereal type header（`cereal/types/vector.hpp` 等）。
-- `entt::entity` 欄位要用 `save`/`load` 分拆處理（參考 `cross_zone_ref.h`），cereal 預設不序列化 enum。
+規則:
+- Component 盡量是 POD aggregate,不帶虛擬函式。
+- STL 成員(`std::vector`、`std::string` 等)要對應引入 cereal type header(`cereal/types/vector.hpp` 等)。
+- `entt::entity` 欄位用 `save`/`load` 分拆處理(參考 `components/cross_zone_ref.h`),cereal 預設不序列化 enum。
+- 跨 zone 的參照不要存裸 `entt::entity`,用 `CrossZoneRef`(參考 `components/owner.h`)。
 
 ---
 
@@ -38,28 +35,37 @@ struct Skill {
 
 ```cpp
 // src/gcore/serialize/all_components.h
-#pragma once
-#include <entt.hpp>
-#include "../components/cross_zone_ref.h"
-#include "../components/skill.h"          // <-- 加這行
+#include "../components/skill.h"          // <-- 1. include
 
 using AllComponents = entt::type_list<
+    ZoneMeta,
+    ChildZoneSummary,
     CrossZoneRef,
-    Skill          // <-- 加這行
+    Position,
+    Velocity,
+    Owner,
+    Skill          // <-- 2. 加在最後
 >;
 ```
 
-**這是唯一需要改的登錄點。** `zone_io::save` 與 `zone_io::load` 會自動展開 `AllComponents`，不需要其他地方改動。
+**這是唯一需要改的登錄點。** `zone_io::save` / `load` 自動展開 `AllComponents`,序列化不必動別處。
 
-> 注意：save 與 load 展開的順序必須一致（type_list 的宣告順序即是位元流順序）。新增永遠加在最後，**不要插在中間**，否則舊存檔讀取時資料會錯位。
+> 順序即位元流順序,save/load 共用這份清單。新增**永遠加在最後,不要插中間**,否則舊存檔讀取時資料會錯位。
 
 ---
 
 ## 新增 System
 
-System 是吃 `entt::registry&`（或未來的 `World&`）的自由函式，不是 class。
+回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `others/entt_tutorial.md` §4)。本專案分兩種:
+
+| 種類 | 簽名 | 跑在哪 |
+|---|---|---|
+| **per-zone**(目前支援) | `void(entt::registry&)` | `GlobalManager::tick()` 對每個 loaded zone 各跑一次 |
+| **cross-zone**(待規劃) | `void(GlobalManager&)` | 需要 `resolve` / 跨 zone;觸發模型未定,暫時手動呼叫 |
 
 ### Step 1：在 `src/gcore/systems/` 建 header
+
+per-zone system 簽名固定是 `void(entt::registry&)`,才能註冊給 `GlobalManager`:
 
 ```cpp
 // src/gcore/systems/skill_system.h
@@ -69,35 +75,50 @@ System 是吃 `entt::registry&`（或未來的 `World&`）的自由函式，不�
 
 namespace systems {
 
-inline void tick_cooldown(entt::registry& reg, float dt) {
-    reg.view<Skill>().each([dt](Skill& sk) {
-        if (sk.cooldown > 0.f)
-            sk.cooldown -= dt;
-        if (sk.cooldown < 0.f)
-            sk.cooldown = 0.f;
+inline void tick_cooldown(entt::registry& reg) {
+    reg.view<Skill>().each([](Skill& sk) {
+        if (sk.cooldown > 0) --sk.cooldown;
     });
 }
 
 } // namespace systems
 ```
 
-規則：
-- System 一律是**自由函式**（或 namespace 內的函式），不做成 class。
-- 若 system 需要跨 tick 的暫存狀態，改成有成員的 struct 放在呼叫端（`GlobalManager` 或未來的 `World`），不要放在 component 裡。
-- 先用 `view`，不要過早用 `group`。
+規則:
+- per-zone system 一律 `void(entt::registry&)` 的自由函式,不做成 class。
+- 若 system 需要跨 tick 的暫存狀態,放在呼叫端(`GlobalManager` 或其持有的物件),不要放進 component。
+- 先用 `view`,不要過早用 `group`。
+- 遍歷 view 時若要建/刪 entity,先收集、迴圈外再做(見 `entt_tutorial.md` §9)。
 
 ---
 
-### Step 2：在 tick 裡呼叫
-
-目前 `GlobalManager` 還沒有 tick 入口；未來 `World` 定義後會統一管理。
-暫時在測試或上層邏輯中直接呼叫：
+### Step 2：註冊並 tick
 
 ```cpp
+#include <gcore/global_manager.h>
 #include <gcore/systems/skill_system.h>
 
-// 每幀或每回合
-systems::tick_cooldown(registry, delta_time);
+GlobalManager gm;
+gm.add_zone_system(systems::tick_cooldown);   // 註冊;tick() 依註冊順序跑
+
+// 遊戲每回合:
+gm.tick();   // 對每個「已載入」的 zone 跑所有註冊的 per-zone system
+```
+
+重點:
+- **執行順序 = 註冊順序**。先 `add` 的先跑。
+- `tick()` **只跑 loaded zones**;**root 不跑**(它放全局實體,不是地圖 actor)。
+- 未載入的 zone 不在記憶體,不會被 tick(streaming 的本質;離線追算之後再規劃)。
+
+### 需要額外參數(如 dt)?用 lambda 綁進去
+
+`tick()` 不傳參數給 system。若 system 需要 dt 等,註冊時用 lambda 捕捉:
+
+```cpp
+float dt = 0.016f;
+gm.add_zone_system([dt](entt::registry& reg){
+    systems::move_with_dt(reg, dt);
+});
 ```
 
 ---
@@ -106,25 +127,26 @@ systems::tick_cooldown(registry, delta_time);
 
 ```
 新增 component:
-  1. src/gcore/components/<name>.h      — 定義 struct + cereal serialize
-  2. src/gcore/serialize/all_components.h — AllComponents 加一行（永遠加在最後）
+  1. src/gcore/components/<name>.h         — struct + cereal serialize
+  2. src/gcore/serialize/all_components.h  — AllComponents 加一行(永遠加在最後)
 
-新增 system:
-  1. src/gcore/systems/<name>_system.h  — 自由函式，吃 registry& 或 World&
-  2. 在 tick 裡按順序呼叫
+新增 per-zone system:
+  1. src/gcore/systems/<name>.h            — void(entt::registry&) 自由函式
+  2. gm.add_zone_system(systems::<name>)   — 註冊(順序 = 執行順序)
+     gm.tick()                             — 對每個 loaded zone 跑
 ```
 
 ---
 
-## 新增測試
+## 新增測試(參考 `test/src/main.cpp`)
 
-每個新 component 建議補一條 round-trip 驗證（參考 `test/src/main.cpp` 的結構）：
+**component round-trip:**
 
 ```cpp
 static bool test_skill_roundtrip() {
     entt::registry src;
     auto e = src.create();
-    src.emplace<Skill>(e, uint32_t{99}, 1.5f, 3.0f);
+    src.emplace<Skill>(e, uint32_t{99}, 3);
 
     std::stringstream ss;
     zone_io::save(src, ss);
@@ -132,14 +154,31 @@ static bool test_skill_roundtrip() {
     entt::registry dst;
     zone_io::load(dst, ss);
 
-    auto view = dst.view<Skill>();
-    CHECK("count", std::distance(view.begin(), view.end()) == 1);
-    for (auto en : view) {
-        auto& sk = view.get<Skill>(en);
-        CHECK("skill_id",      sk.skill_id      == 99u);
-        CHECK("cooldown",      sk.cooldown      == 1.5f);
-        CHECK("max_cooldown",  sk.max_cooldown  == 3.0f);
+    bool ok = false;
+    for (auto en : dst.view<Skill>()) {
+        auto& sk = dst.get<Skill>(en);
+        ok = (sk.skill_id == 99u && sk.cooldown == 3);
     }
+    CHECK("skill survived", ok);
+    return true;
+}
+```
+
+**system 行為(透過 tick):**
+
+```cpp
+static bool test_cooldown_ticks_down() {
+    GlobalManager gm;
+    gm.add_zone_system(systems::tick_cooldown);
+
+    auto& z = gm.create(make_zone_key(ZoneType{1}, 0, 0, 0), ZONE_ROOT);
+    auto e = z.create();
+    z.emplace<Skill>(e, uint32_t{1}, 2);
+
+    gm.tick();
+    CHECK("cooldown 2->1", z.get<Skill>(e).cooldown == 1);
+    gm.tick();
+    CHECK("cooldown 1->0", z.get<Skill>(e).cooldown == 0);
     return true;
 }
 ```
@@ -148,7 +187,9 @@ static bool test_skill_roundtrip() {
 
 ## 參考
 
-- EnTT 基礎用法：`others/entt_tutorial.md`
-- cereal 序列化：`others/cereal_tutorial.md`
-- component 型別清單：`src/gcore/serialize/all_components.h`
-- 現有測試：`test/src/main.cpp`
+- EnTT 基礎(view / system / entity):`others/entt_tutorial.md`
+- cereal 序列化:`others/cereal_tutorial.md`
+- zone / streaming / tick 全貌:`others/zone_streaming_architecture.md`
+- 實際範例:`src/gcore/systems/movement.h`、`src/gcore/components/`
+- component 型別清單:`src/gcore/serialize/all_components.h`
+- 現有測試:`test/src/main.cpp`

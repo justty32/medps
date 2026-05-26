@@ -3,7 +3,9 @@
 #include <gcore/components/zone_meta.h>
 #include <gcore/components/child_zone_summary.h>
 #include <gcore/components/position.h>
+#include <gcore/components/velocity.h>
 #include <gcore/components/owner.h>
+#include <gcore/systems/movement.h>
 #include <gcore/serialize/zone_io.h>
 #include <gcore/serialize/zone_store.h>
 #include <gcore/global_manager.h>
@@ -335,6 +337,57 @@ static bool test_owner_roundtrip() {
     return true;
 }
 
+static bool test_tick_runs_per_loaded_zone() {
+    GlobalManager gm;
+    gm.add_zone_system(systems::movement);
+
+    // two loaded zones, each with a moving actor
+    auto& z1 = gm.create(make_zone_key(ZoneType{1}, 1, 0, 0), ZONE_ROOT);
+    auto e1 = z1.create();
+    z1.emplace<Position>(e1, 0, 0);
+    z1.emplace<Velocity>(e1, 1, 2);
+
+    auto& z2 = gm.create(make_zone_key(ZoneType{1}, 2, 0, 0), ZONE_ROOT);
+    auto e2 = z2.create();
+    z2.emplace<Position>(e2, 10, 10);
+    z2.emplace<Velocity>(e2, -1, 0);
+
+    // an actor in root should NOT be ticked by per-zone systems
+    auto er = gm.root.create();
+    gm.root.emplace<Position>(er, 100, 100);
+    gm.root.emplace<Velocity>(er, 5, 5);
+
+    gm.tick();
+
+    auto& p1 = z1.get<Position>(e1);
+    auto& p2 = z2.get<Position>(e2);
+    auto& pr = gm.root.get<Position>(er);
+
+    CHECK("zone1 moved", p1.x == 1 && p1.y == 2);
+    CHECK("zone2 moved", p2.x == 9 && p2.y == 10);
+    CHECK("root untouched", pr.x == 100 && pr.y == 100);
+    return true;
+}
+
+static bool test_tick_system_order() {
+    // systems run in registration order against the same zone
+    GlobalManager gm;
+    auto& z = gm.create(make_zone_key(ZoneType{1}, 3, 0, 0), ZONE_ROOT);
+    auto e = z.create();
+    z.emplace<Position>(e, 0, 0);
+
+    gm.add_zone_system([](entt::registry& r){
+        r.view<Position>().each([](Position& p){ p.x += 1; });   // first: +1
+    });
+    gm.add_zone_system([](entt::registry& r){
+        r.view<Position>().each([](Position& p){ p.x *= 10; });  // then: *10
+    });
+
+    gm.tick();
+    CHECK("order is +1 then *10", z.get<Position>(e).x == 10);
+    return true;
+}
+
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -367,6 +420,8 @@ int main() {
         { "position_roundtrip",         test_position_roundtrip         },
         { "owner_resolves_faction",     test_owner_resolves_to_root_faction },
         { "owner_roundtrip",            test_owner_roundtrip            },
+        { "tick_per_loaded_zone",       test_tick_runs_per_loaded_zone  },
+        { "tick_system_order",          test_tick_system_order          },
         { "serialize_empty",            test_serialize_empty            },
     };
 

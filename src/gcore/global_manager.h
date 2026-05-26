@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <memory>
 #include <vector>
+#include <functional>
 #include <entt.hpp>
 #include "zone_key.h"
 #include "components/cross_zone_ref.h"
@@ -50,6 +51,19 @@ public:
     // returns empty if the parent zone is not loaded.
     std::vector<ZoneKey> children(ZoneKey parent);
 
+    // ---- systems ----
+
+    // a per-zone system: runs against one zone's registry.
+    using ZoneSystem = std::function<void(entt::registry&)>;
+
+    // register a per-zone system; tick() runs them in registration order.
+    void add_zone_system(ZoneSystem sys);
+
+    // advance one step: run every registered per-zone system against each
+    // LOADED zone (root is excluded -- it holds global entities, not map actors;
+    // cross-zone systems will be handled separately).
+    void tick();
+
     // ---- whole-game save / load ----
 
     // checkpoint: write root + every currently-loaded zone to the store (no eviction).
@@ -68,4 +82,5 @@ private:
 
     std::unique_ptr<ZoneStore>                                   store_;
     std::unordered_map<ZoneKey, std::unique_ptr<entt::registry>> loaded_;
+    std::vector<ZoneSystem>                                      zone_systems_;
 };

@@ -4,6 +4,7 @@
 #include "../components/child_zone_summary.h"
 #include "../components/cross_zone_ref.h"
 #include "../components/position.h"
+#include "../components/velocity.h"
 #include "../components/owner.h"
 
 // Single source of truth for snapshot save/load order.
@@ -13,5 +14,6 @@ using AllComponents = entt::type_list<
     ChildZoneSummary,
     CrossZoneRef,
     Position,
+    Velocity,
     Owner
 >;

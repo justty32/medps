@@ -88,3 +88,13 @@ void GlobalManager::load_root() {
         zone_io::load(root, iss);
     }
 }
+
+void GlobalManager::add_zone_system(ZoneSystem sys) {
+    zone_systems_.push_back(std::move(sys));
+}
+
+void GlobalManager::tick() {
+    for (auto& [key, reg] : loaded_)
+        for (auto& sys : zone_systems_)
+            sys(*reg);
+}
