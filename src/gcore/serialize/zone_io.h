@@ -43,6 +43,8 @@ inline void load(entt::registry& reg, std::istream& is) {
 }
 
 inline void save(entt::registry& reg, const std::filesystem::path& path) {
+    if (path.has_parent_path())
+        std::filesystem::create_directories(path.parent_path());
     std::ofstream ofs{path, std::ios::binary};
     save(reg, ofs);
 }

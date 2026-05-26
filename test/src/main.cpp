@@ -1,11 +1,20 @@
 #include <gcore/zone_key.h>
 #include <gcore/components/cross_zone_ref.h>
 #include <gcore/components/zone_meta.h>
+#include <gcore/components/child_zone_summary.h>
 #include <gcore/serialize/zone_io.h>
+#include <gcore/global_manager.h>
 
 #include <cassert>
 #include <sstream>
 #include <cstdio>
+#include <algorithm>
+#include <vector>
+#include <filesystem>
+
+static bool contains(const std::vector<ZoneKey>& v, ZoneKey k) {
+    return std::find(v.begin(), v.end(), k) != v.end();
+}
 
 // ---- helpers ----
 
@@ -106,6 +115,161 @@ static bool test_zone_meta_placeholder_survives() {
     return true;
 }
 
+static bool test_resolve_root() {
+    GlobalManager gm;
+    auto e = gm.root.create();
+
+    CrossZoneRef ref{ZONE_ROOT, e};
+    auto res = gm.resolve(ref);
+
+    CHECK("root reg",    res.reg == &gm.root);
+    CHECK("root entity", res.entity == e);
+    CHECK("root valid",  res.valid());
+    return true;
+}
+
+static bool test_resolve_unloaded_zone() {
+    GlobalManager gm;
+    CrossZoneRef ref{make_zone_key(ZoneType{1}, 5, 6, 0), entt::entity{0}};
+    auto res = gm.resolve(ref);
+
+    CHECK("unloaded reg null", res.reg == nullptr);
+    CHECK("unloaded invalid",  !res.valid());
+    return true;
+}
+
+static bool test_resolve_loaded_zone() {
+    GlobalManager gm;
+    auto key = make_zone_key(ZoneType{1}, 5, 6, 0);
+    auto& zone = gm.create(key, ZONE_ROOT);
+
+    auto e = zone.create();
+    zone.emplace<ZoneMeta>(e, key);
+
+    CrossZoneRef ref{key, e};
+    auto res = gm.resolve(ref);
+
+    CHECK("loaded reg",     res.reg == &zone);
+    CHECK("loaded valid",   res.valid());
+
+    // stale entity in a loaded zone: reg present, but not valid
+    CrossZoneRef stale{key, entt::entity{9999}};
+    auto sres = gm.resolve(stale);
+    CHECK("stale reg present", sres.reg == &zone);
+    CHECK("stale not valid",   !sres.valid());
+    return true;
+}
+
+static bool test_child_index_flat() {
+    GlobalManager gm;
+    auto a1 = make_zone_key(ZoneType{1}, 1, 0, 0);
+    auto a2 = make_zone_key(ZoneType{1}, 2, 0, 0);
+
+    gm.create(a1, ZONE_ROOT);
+    gm.create(a2, ZONE_ROOT);
+    gm.create(a1, ZONE_ROOT);   // idempotent: must not duplicate stub
+
+    auto kids = gm.children(ZONE_ROOT);
+    CHECK("two children",  kids.size() == 2);
+    CHECK("has a1",        contains(kids, a1));
+    CHECK("has a2",        contains(kids, a2));
+    return true;
+}
+
+static bool test_child_index_hierarchy() {
+    GlobalManager gm;
+    auto province = make_zone_key(ZoneType{1}, 0, 0, 0);
+    auto area     = make_zone_key(ZoneType{2}, 3, 4, 0);
+
+    gm.create(province, ZONE_ROOT);
+    gm.create(area, province);
+
+    auto root_kids     = gm.children(ZONE_ROOT);
+    auto province_kids = gm.children(province);
+
+    CHECK("root has province",     contains(root_kids, province));
+    CHECK("province has area",     contains(province_kids, area));
+    CHECK("area not under root",  !contains(root_kids, area));
+    return true;
+}
+
+static bool test_child_overview_without_loading() {
+    // overview a child that exists but is not loaded: parent's stub still lists it
+    GlobalManager gm;
+    auto province = make_zone_key(ZoneType{1}, 7, 0, 0);
+    auto area     = make_zone_key(ZoneType{2}, 8, 0, 0);
+    gm.create(province, ZONE_ROOT);
+    gm.create(area, province);
+
+    // simulate area not being loaded by checking parent's index independently
+    auto kids = gm.children(province);
+    CHECK("area listed", contains(kids, area));
+    // area registry exists here because create() loads it; the point is that
+    // children() reads ONLY the parent's stub, never the area registry.
+    return true;
+}
+
+static bool test_child_summary_roundtrip() {
+    // a parent zone's child stubs must survive serialization
+    entt::registry parent;
+    auto ph = parent.create();
+    parent.emplace<ZoneMeta>(ph, ZoneKey{100}, ZONE_ROOT);
+    auto stub = parent.create();
+    parent.emplace<ChildZoneSummary>(stub, ZoneKey{200});
+
+    std::stringstream ss;
+    zone_io::save(parent, ss);
+
+    entt::registry dst;
+    zone_io::load(dst, ss);
+
+    bool found = false;
+    for (auto e : dst.view<ChildZoneSummary>())
+        if (dst.get<ChildZoneSummary>(e).key == ZoneKey{200}) found = true;
+    CHECK("child stub survived", found);
+    return true;
+}
+
+static bool test_zone_path_deterministic() {
+    GlobalManager gm;
+    auto k = make_zone_key(ZoneType{1}, 5, 6, 7);
+    CHECK("same key same path", gm.zone_path(k) == gm.zone_path(k));
+    CHECK("diff key diff path", gm.zone_path(k) != gm.zone_path(ZoneKey{k + 1}));
+    return true;
+}
+
+static bool test_save_load_root() {
+    auto dir = std::filesystem::temp_directory_path() / "medps_test_root";
+    std::filesystem::remove_all(dir);
+
+    auto child = make_zone_key(ZoneType{1}, 1, 0, 0);
+
+    {   // session 1: build a game and checkpoint it
+        GlobalManager gm;
+        gm.zones_dir = dir;
+        auto e = gm.root.create();
+        gm.root.emplace<ZoneMeta>(e, ZONE_ROOT, ZONE_ROOT);
+        gm.create(child, ZONE_ROOT);   // registers a child stub in root
+        gm.save_all();
+    }
+
+    bool ok = true;
+    {   // session 2: reopen and verify root + its child index persisted
+        GlobalManager gm2;
+        gm2.zones_dir = dir;
+        gm2.load_root();
+
+        auto kids = gm2.children(ZONE_ROOT);
+        if (!contains(kids, child)) ok = false;
+        // child zone is NOT loaded yet (streamed on demand)
+        if (gm2.get(child) != nullptr) ok = false;
+    }
+
+    std::filesystem::remove_all(dir);
+    CHECK("root + child index persisted, child not auto-loaded", ok);
+    return true;
+}
+
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -126,6 +290,15 @@ int main() {
         { "serialize_roundtrip",        test_serialize_roundtrip        },
         { "serialize_orphans_removed",  test_serialize_orphans_removed  },
         { "zone_meta_placeholder",      test_zone_meta_placeholder_survives },
+        { "resolve_root",               test_resolve_root               },
+        { "resolve_unloaded_zone",      test_resolve_unloaded_zone      },
+        { "resolve_loaded_zone",        test_resolve_loaded_zone        },
+        { "child_index_flat",           test_child_index_flat           },
+        { "child_index_hierarchy",      test_child_index_hierarchy      },
+        { "child_overview",             test_child_overview_without_loading },
+        { "child_summary_roundtrip",    test_child_summary_roundtrip    },
+        { "zone_path_deterministic",    test_zone_path_deterministic    },
+        { "save_load_root",             test_save_load_root             },
         { "serialize_empty",            test_serialize_empty            },
     };
 
