@@ -2,10 +2,10 @@
 #include <unordered_map>
 #include <memory>
 #include <vector>
-#include <filesystem>
 #include <entt.hpp>
 #include "zone_key.h"
 #include "components/cross_zone_ref.h"
+#include "serialize/zone_store.h"
 
 // Result of resolving a CrossZoneRef against a GlobalManager.
 //   reg == nullptr           -> target zone is not loaded
@@ -21,8 +21,12 @@ struct ZoneResolution {
 
 class GlobalManager {
 public:
-    entt::registry        root;                 // ZONE_ROOT, always live
-    std::filesystem::path zones_dir{"zones"};   // on-disk location for zone files
+    entt::registry root;   // ZONE_ROOT, always live
+
+    // defaults to a folder backend at "zones"; inject another ZoneStore to
+    // change where/how zones are persisted (single pack file, DB, ...).
+    GlobalManager();
+    explicit GlobalManager(std::unique_ptr<ZoneStore> store);
 
     // nullptr if not loaded
     entt::registry* get(ZoneKey key);
@@ -36,34 +40,32 @@ public:
     // Idempotent: re-creating an existing zone won't duplicate the stub.
     entt::registry& create(ZoneKey key, ZoneKey parent);
 
-    // deserialize a zone from its derived path; if already loaded returns existing.
+    // deserialize a zone from the store; if already loaded returns existing.
     entt::registry& load(ZoneKey key);
 
-    // serialize a zone to its derived path and drop it from memory.
+    // serialize a zone to the store and drop it from memory.
     void unload(ZoneKey key);
 
     // list direct child zones of a (loaded) parent WITHOUT loading them.
     // returns empty if the parent zone is not loaded.
     std::vector<ZoneKey> children(ZoneKey parent);
 
-    // deterministic on-disk path for a zone (no clash: ZoneKey is unique).
-    std::filesystem::path zone_path(ZoneKey key) const;
-
-    // fixed path of the root registry (the top of a whole-game save).
-    std::filesystem::path root_path() const;
-
     // ---- whole-game save / load ----
 
-    // checkpoint: write root + every currently-loaded zone to disk (no eviction).
+    // checkpoint: write root + every currently-loaded zone to the store (no eviction).
     void save_all();
 
-    // open a game: load the root registry. Sub-zones stay on disk until streamed
-    // in on demand via load()/create().
+    // open a game: load the root registry. Sub-zones stay in the store until
+    // streamed in on demand via load()/create().
     void load_root();
+
+    ZoneStore& store() { return *store_; }
 
 private:
     entt::registry* parent_registry(ZoneKey parent);          // ZONE_ROOT -> &root
     void ensure_child_stub(entt::registry& parent, ZoneKey child);
+    void write_zone(ZoneKey key, entt::registry& reg);        // reg -> bytes -> store
 
+    std::unique_ptr<ZoneStore>                                   store_;
     std::unordered_map<ZoneKey, std::unique_ptr<entt::registry>> loaded_;
 };

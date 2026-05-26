@@ -2,7 +2,13 @@
 #include "serialize/zone_io.h"
 #include "components/zone_meta.h"
 #include "components/child_zone_summary.h"
-#include <cstdio>
+#include <sstream>
+
+GlobalManager::GlobalManager()
+    : GlobalManager(std::make_unique<FolderZoneStore>("zones")) {}
+
+GlobalManager::GlobalManager(std::unique_ptr<ZoneStore> store)
+    : store_(std::move(store)) {}
 
 entt::registry* GlobalManager::get(ZoneKey key) {
     auto it = loaded_.find(key);
@@ -14,10 +20,10 @@ ZoneResolution GlobalManager::resolve(const CrossZoneRef& ref) {
     return ZoneResolution{ reg, ref.local_entity };
 }
 
-std::filesystem::path GlobalManager::zone_path(ZoneKey key) const {
-    char buf[17];
-    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(key));
-    return zones_dir / (std::string(buf) + ".bin");
+void GlobalManager::write_zone(ZoneKey key, entt::registry& reg) {
+    std::ostringstream oss;
+    zone_io::save(reg, oss);
+    store_->write(key, oss.str());
 }
 
 entt::registry* GlobalManager::parent_registry(ZoneKey parent) {
@@ -45,15 +51,19 @@ entt::registry& GlobalManager::create(ZoneKey key, ZoneKey parent) {
 
 entt::registry& GlobalManager::load(ZoneKey key) {
     auto [it, inserted] = loaded_.emplace(key, std::make_unique<entt::registry>());
-    if (inserted)
-        zone_io::load(*it->second, zone_path(key));
+    if (inserted) {
+        if (auto bytes = store_->read(key)) {
+            std::istringstream iss{*bytes};
+            zone_io::load(*it->second, iss);
+        }
+    }
     return *it->second;
 }
 
 void GlobalManager::unload(ZoneKey key) {
     auto it = loaded_.find(key);
     if (it == loaded_.end()) return;
-    zone_io::save(*it->second, zone_path(key));
+    write_zone(key, *it->second);
     loaded_.erase(it);
 }
 
@@ -65,16 +75,16 @@ std::vector<ZoneKey> GlobalManager::children(ZoneKey parent) {
     return out;
 }
 
-std::filesystem::path GlobalManager::root_path() const {
-    return zones_dir / "root.bin";
-}
-
 void GlobalManager::save_all() {
-    zone_io::save(root, root_path());
+    write_zone(ZONE_ROOT, root);
     for (auto& [key, reg] : loaded_)
-        zone_io::save(*reg, zone_path(key));
+        write_zone(key, *reg);
+    store_->flush();
 }
 
 void GlobalManager::load_root() {
-    zone_io::load(root, root_path());
+    if (auto bytes = store_->read(ZONE_ROOT)) {
+        std::istringstream iss{*bytes};
+        zone_io::load(root, iss);
+    }
 }

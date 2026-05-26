@@ -3,6 +3,7 @@
 #include <gcore/components/zone_meta.h>
 #include <gcore/components/child_zone_summary.h>
 #include <gcore/serialize/zone_io.h>
+#include <gcore/serialize/zone_store.h>
 #include <gcore/global_manager.h>
 
 #include <cassert>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <vector>
 #include <filesystem>
+#include <memory>
 
 static bool contains(const std::vector<ZoneKey>& v, ZoneKey k) {
     return std::find(v.begin(), v.end(), k) != v.end();
@@ -231,10 +233,11 @@ static bool test_child_summary_roundtrip() {
 }
 
 static bool test_zone_path_deterministic() {
-    GlobalManager gm;
+    FolderZoneStore s{"zones"};
     auto k = make_zone_key(ZoneType{1}, 5, 6, 7);
-    CHECK("same key same path", gm.zone_path(k) == gm.zone_path(k));
-    CHECK("diff key diff path", gm.zone_path(k) != gm.zone_path(ZoneKey{k + 1}));
+    CHECK("same key same path", s.path(k) == s.path(k));
+    CHECK("diff key diff path", s.path(k) != s.path(ZoneKey{k + 1}));
+    CHECK("root special name",  s.path(ZONE_ROOT) != s.path(k));
     return true;
 }
 
@@ -245,8 +248,7 @@ static bool test_save_load_root() {
     auto child = make_zone_key(ZoneType{1}, 1, 0, 0);
 
     {   // session 1: build a game and checkpoint it
-        GlobalManager gm;
-        gm.zones_dir = dir;
+        GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
         auto e = gm.root.create();
         gm.root.emplace<ZoneMeta>(e, ZONE_ROOT, ZONE_ROOT);
         gm.create(child, ZONE_ROOT);   // registers a child stub in root
@@ -255,8 +257,7 @@ static bool test_save_load_root() {
 
     bool ok = true;
     {   // session 2: reopen and verify root + its child index persisted
-        GlobalManager gm2;
-        gm2.zones_dir = dir;
+        GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
         gm2.load_root();
 
         auto kids = gm2.children(ZONE_ROOT);
