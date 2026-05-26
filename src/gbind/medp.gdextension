@@ -1,0 +1,15 @@
+; Godot 4 GDExtension descriptor for the medp facade.
+; Copy this into your Godot project (e.g. res://medp.gdextension) and put the
+; built medp_gdext.dll under res://bin/ (or adjust the paths below).
+
+[configuration]
+entry_symbol = "medp_library_init"
+compatibility_minimum = "4.6"
+
+[libraries]
+windows.debug.x86_64   = "res://bin/medp_gdext.dll"
+windows.release.x86_64 = "res://bin/medp_gdext.dll"
+linux.debug.x86_64     = "res://bin/libmedp_gdext.so"
+linux.release.x86_64   = "res://bin/libmedp_gdext.so"
+macos.debug            = "res://bin/libmedp_gdext.dylib"
+macos.release          = "res://bin/libmedp_gdext.dylib"

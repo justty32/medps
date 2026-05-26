@@ -30,6 +30,9 @@ set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 file(GLOB_RECURSE src
     "${SRC}/*.cpp" "${SRC}/*.hpp" "${SRC}/*.h" "${SRC}/*.c"
 )
+# The core simulation must stay godot-free; gbind/ (the GDExtension facade)
+# is built separately and is the only place allowed to include godot-cpp.
+list(FILTER src EXCLUDE REGEX "/gbind/")
 source_group(TREE ${SRC} FILES ${src})
 
 add_library(${PROJ} SHARED ${src})
@@ -60,3 +63,19 @@ endif()
 
 file(REMOVE_RECURSE "${BUILD_PATH}/data")
 file(COPY "${PROJECT_SOURCE_DIR}/data" DESTINATION "${BUILD_PATH}")
+
+# ---- optional Godot 4 GDExtension facade ----
+# OFF by default: godot-cpp's first build is slow (generates bindings + compiles
+# the binding lib). Enable with -DMEDP_BUILD_GDEXTENSION=ON.
+option(MEDP_BUILD_GDEXTENSION "Build the Godot 4 GDExtension facade (src/gbind)" OFF)
+if(MEDP_BUILD_GDEXTENSION)
+    set(GODOT_CPP_DIR "C:/code/mine/pas/projects/godot-cpp"
+        CACHE PATH "Path to the godot-cpp checkout")
+    add_subdirectory("${GODOT_CPP_DIR}" "${CMAKE_BINARY_DIR}/godot-cpp-build")
+
+    file(GLOB_RECURSE gbind_src "${SRC}/gbind/*.cpp" "${SRC}/gbind/*.h")
+    add_library(medp_gdext SHARED ${gbind_src})
+    set_target_properties(medp_gdext PROPERTIES CXX_STANDARD 20 OUTPUT_NAME "medp_gdext")
+    target_include_directories(medp_gdext PRIVATE "${SRC}")
+    target_link_libraries(medp_gdext PRIVATE "${PROJ}_static" godot-cpp)
+endif()
