@@ -1,13 +1,11 @@
 #pragma once
 
-#include "utildef.h"
-#include "bin_fwr.hpp"
 #include "mydef.h"
 
 #include <functional>
 #include <vector>
 #include <type_traits>
-#include <fstream>
+#include <cereal/types/vector.hpp>
 
 template<typename T>
 concept is_coor = std::is_same_v<T, std::pair<int, int>>
@@ -37,17 +35,8 @@ public:
 	tdarray(size_t sizex, size_t sizey): tdarray(){
 		alloc(sizex, sizey);
 	}
-	void Save(BinFSR::ostream_t& fs) {
-		BinFSR::write(&sx, fs);
-		BinFSR::write(&sy, fs);
-		BinFSR::write(&vec, fs);
-	}
-	void Load(BinFSR::istream_t& fs) {
-		BinFSR::read(&sx, fs);
-		BinFSR::read(&sy, fs);
-		vec.resize(sx * sy);
-		BinFSR::read(&vec, fs);
-	}
+	template<class Archive>
+	void serialize(Archive& ar) { ar(sx, sy, vec); }
 	inline bool usable() { return vec.size() > 0 && sx > 0 && sy > 0 && sx * sy == vec.size(); }
 	inline bool unusable() { return !usable(); }
 	bool alloc(size_t sizex, size_t sizey){
