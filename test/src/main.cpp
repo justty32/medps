@@ -468,6 +468,73 @@ static bool test_area_terrain_roundtrip() {
     return true;
 }
 
+static bool test_prefetch_loads_chunk() {
+    auto dir = std::filesystem::temp_directory_path() / "medps_test_prefetch";
+    std::filesystem::remove_all(dir);
+
+    auto a   = region_key(10, 10);
+    auto b   = region_key(11, 10);   // same 5x5 chunk as a
+    auto c   = region_key(12, 11);   // same chunk
+    auto far = region_key(40, 40);   // different chunk
+    bool ok  = (chunk_key_of(a) == chunk_key_of(b)) && (chunk_key_of(a) == chunk_key_of(c))
+            && (chunk_key_of(a) != chunk_key_of(far));
+
+    {   // session 1: create + persist four region zones
+        GlobalManager gm{std::make_unique<ChunkedFolderZoneStore>(dir)};
+        gm.create(a, ZONE_ROOT);
+        gm.create(b, ZONE_ROOT);
+        gm.create(c, ZONE_ROOT);
+        gm.create(far, ZONE_ROOT);
+        gm.save_all();
+    }
+    {   // session 2: prefetch one zone -> its whole chunk comes in; far one does not
+        GlobalManager gm2{std::make_unique<ChunkedFolderZoneStore>(dir)};
+        gm2.prefetch(a);
+        if (gm2.get(a)   == nullptr) ok = false;
+        if (gm2.get(b)   == nullptr) ok = false;   // chunk sibling, prefetched
+        if (gm2.get(c)   == nullptr) ok = false;
+        if (gm2.get(far) != nullptr) ok = false;   // different chunk, untouched
+    }
+
+    std::filesystem::remove_all(dir);
+    CHECK("prefetch loads chunk siblings, not other chunks", ok);
+    return true;
+}
+
+static bool test_stream_around_window() {
+    auto dir = std::filesystem::temp_directory_path() / "medps_test_stream";
+    std::filesystem::remove_all(dir);
+
+    {   // a 5x5 patch of region zones at world-tiles 10..14, all persisted
+        GlobalManager gm{std::make_unique<ChunkedFolderZoneStore>(dir)};
+        for (int x = 10; x <= 14; ++x)
+            for (int y = 10; y <= 14; ++y)
+                gm.create(region_key((int16_t)x, (int16_t)y), ZONE_ROOT);
+        gm.save_all();
+    }
+
+    bool ok = true;
+    {
+        GlobalManager gm2{std::make_unique<ChunkedFolderZoneStore>(dir)};
+        gm2.stream_around(region_key(12, 12), 1);   // 3x3 window: x,y in 11..13
+
+        if (gm2.get(region_key(12, 12)) == nullptr) ok = false;  // center
+        if (gm2.get(region_key(11, 11)) == nullptr) ok = false;  // corner of window
+        if (gm2.get(region_key(13, 13)) == nullptr) ok = false;
+        if (gm2.get(region_key(10, 12)) != nullptr) ok = false;  // outside (dx=-2)
+        if (gm2.get(region_key(14, 12)) != nullptr) ok = false;  // outside (dx=+2)
+
+        // move focus east -> window re-centers on (13,12), covering x 12..14
+        gm2.stream_around(region_key(13, 12), 1);
+        if (gm2.get(region_key(14, 12)) == nullptr) ok = false;  // newly in window
+        if (gm2.get(region_key(11, 11)) != nullptr) ok = false;  // rolled out -> evicted
+    }
+
+    std::filesystem::remove_all(dir);
+    CHECK("stream_around loads window + evicts on move", ok);
+    return true;
+}
+
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -503,6 +570,8 @@ int main() {
         { "zone_layers_and_parent",     test_zone_layers_and_parent     },
         { "chunk_key_grouping",         test_chunk_key_grouping         },
         { "chunked_store_packs_zones",  test_chunked_store_packs_zones  },
+        { "prefetch_loads_chunk",       test_prefetch_loads_chunk       },
+        { "stream_around_window",       test_stream_around_window       },
         { "blocking_roundtrip",         test_blocking_roundtrip         },
         { "area_terrain_roundtrip",     test_area_terrain_roundtrip     },
         { "serialize_empty",            test_serialize_empty            },

@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 #include <optional>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,15 @@ struct ZoneStore {
     // commit pending writes to durable storage. No-op for folder backend;
     // a real commit point for single-file / DB backends.
     virtual void flush() {}
+
+    // Keys persisted in the same storage group (chunk / pack page) as `key`,
+    // including `key` if present. Touching one makes the rest cheap to load, so
+    // a caller can prefetch a whole group at once. Default backend stores one
+    // zone per unit, so this is just {key} when present.
+    virtual std::vector<ZoneKey> group_of(ZoneKey key) {
+        if (has(key)) return { key };
+        return {};
+    }
 };
 
 // One file per zone under a directory (the original behavior).

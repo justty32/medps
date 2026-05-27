@@ -46,19 +46,21 @@ enum class ZoneType : uint16_t {
 
 ## 3. 地格換算 / 座標巢狀 【定案 2026-05-27】
 
-定案比例:
+定案比例(實作在 `zone_key.h` 的 `zone_scale` namespace,`constexpr`、單一來源、可調):
 
 ```
-WORLD_DIM = 200        // 世界層 200×200 tiles(一塊大陸 + 周邊海洋)
-R1        = 15         // 1 個 World tile  → 1 張 Region 圖(15×15 region-tiles)
-R2        = 250        // 1 個 Region tile → 1 張 Area   圖(250×250 area-tiles)
+WORLD_DIM    = 200   // 世界層 200×200 tiles(一塊大陸 + 周邊海洋)
+REGION_DIM   = 15    // 1 個 World tile  → 1 張 Region 圖(15×15 region-tiles)
+AREA_DIM     = 250   // 1 個 Region tile → 1 張 Area   圖(250×250 area-tiles)
+REGION_CHUNK = 5     // chunk 邊長:5×5 個 region 共一個 chunk 檔(方案 B)
+AREA_CHUNK   = 1     // area 不 chunk(1:1)
 ```
 
-> 【定案】當作**可調的集中具名常數**(`constexpr`,單一來源):先用上列預設值,座標換算一律引用常數、不散落硬編碼。chunk N 同處集中(Region N=5、Area N=1)。都是估計值(「或更大」「左右」「最大可能」),保留可調。
+> 座標換算一律引用這些常數、不散落硬編碼;都是估計值(「或更大」「左右」「最大可能」),保留可調。下文 R1 = `REGION_DIM`、R2 = `AREA_DIM`。
 
 ### ZoneKey 各層 (x,y) 語意 【定案】
 
-`ZoneKey = ZoneType:16 | x:16 | y:16 | z:16`(維持現有 `zone_key.h:12` 不動,理由見下)。
+`ZoneKey = ZoneType:16 | x:16 | y:16 | z:16`(位元佈局不動,`make_zone_key` / `zone_key_*` 不變,理由見下)。
 每層的 (x,y) = **該 zone 在其上一層全局 tile 網格中的座標**:
 
 | 型別 | (x,y) 意義 | 範圍 |
@@ -83,11 +85,11 @@ R2        = 250        // 1 個 Region tile → 1 張 Area   圖(250×250 area-t
 三種地圖**共用** z 軸:地下 / 地面 / 天空。建議以地面為原點的有號編碼:
 
 ```cpp
-enum ZLayer : int16_t { Underground = -1, Ground = 0, Sky = +1 };
+namespace zlayer { constexpr int16_t Underground = -1, Ground = 0, Sky = +1; }
 ```
 
 - z 是 ZoneKey 的一部分 → **每個垂直層是各自獨立的 zone**(地下世界圖 ≠ 地面世界圖)。
-- parent 鏈**同 z 不變**:地下 Area 的 parent 是地下 Region。跨 z 的移動(階梯 / 飛行 / 傳送門)走 §5 的 portal(`CrossZoneRef`),不靠 parent 鏈。
+- parent 鏈**同 z 不變**:地下 Area 的 parent 是地下 Region。跨 z 的移動(階梯 / 飛行)走 `CrossZoneRef` 跨 zone resolve,不靠 parent 鏈。
 - 世界觀呼應:泰坦融入大地(地下)、古龍融入天空(`notes/a.txt`)。
 
 ---
@@ -132,8 +134,8 @@ Rimworld 的一張 Map = **一組平行的稠密 2D 網格**(TerrainGrid / RoofG
 
 對應到 EnTT 的 Area zone(一個 registry):
 
-- **地格資料 = 稠密陣列,不要一格一 entity**。250×250 = 62500 格,做成 entity 太重。改成 `tdarray<TileXxx>`(terrain / roof / fog / path 各一張)當 registry 的 **context / singleton 資源**(`registry.ctx()` 或單一持有實體)。— 這也正是當初保留 `tdarray` 的理由。
-- **離散 / 會動的物件(pawn、掉落物、建築)= registry 裡的 entity**。
+- **地格資料 = 稠密陣列,不要一格一 entity**。250×250 = 62500 格,做成 entity 太重。做成**掛在單例 entity 上的 component**:已實作 `AreaTerrain { tdarray<Tile> }`,`Tile{ uint16 terrain; uint8 flags }`(flags 快取可走 / 擋視線)。**不可放 `registry.ctx()`**——`zone_io` 用 snapshot 遍歷 component 存檔,ctx 不會被帶走。第一版只一張 terrain 網格;roof / fog / path 等平行網格之後按系統需要再加。這也正是當初保留 `tdarray` 的理由。
+- **離散 / 會動的物件(pawn、掉落物、建築)= registry 裡的 entity**(逐 entity 阻擋已實作 `Blocking{ blocks_move, blocks_sight }`)。
 - **Lister 不用自己造**:`registry.view<Building>()`、`view<Pawn>()` 本身就是 lister。Rimworld「別掃全圖、用 lister」在 EnTT 等於「用 view、別自己 iterate 全 entity」。
 - 同理 World / Region 層的地形也走稠密網格(World 200×200、Region 15×15),只是格上承載的語意不同(World 格=影響力場/地形;Region 格=戰術地形)。
 
@@ -141,26 +143,31 @@ Rimworld 的一張 Map = **一組平行的稠密 2D 網格**(TerrainGrid / RoofG
 
 ## 6. 與現有程式的落差 / 待改清單
 
-> 框架已落地(2026-05-27,`medp_test` 23/23 綠燈)。已完成標 [x];component / system 由使用者後續主導填。
+> 框架已落地(2026-05-27,`medp_test` 25/25 綠燈)。已完成標 [x];component / system 由使用者後續主導填。
 
 - [x] `zone_key.h`:`ZoneType{World,Region,Area}`、`zlayer::{Underground=-1,Ground=0,Sky=+1}`、換算 helper(`world_key`/`region_key`/`area_key`/`parent_of`)、常數集中 `zone_scale::{WORLD_DIM,REGION_DIM,AREA_DIM,REGION_CHUNK,AREA_CHUNK}` + 溢位 `static_assert`。
 - [x] 路徑推導:zone/chunk 檔名由 key 的 16 進位推出(`ChunkedFolderZoneStore::chunk_path` / `FolderZoneStore::path`);type+z 已含在 key 內。
 - [x] 不變量測試:`zone_layers_and_parent`(Area↔Region 整除往返、同 z parent 鏈)、`chunk_key_grouping`;`WORLD_DIM·REGION_DIM < INT16_MAX` 由 `static_assert` 保證。
 - [x] **registry chunk(方案 B)**:`chunk_key.h`(`chunk_key_of`,Region N=5、Area N=1)+ `serialize/chunked_zone_store.h`(chunk 檔 = cereal `map<ZoneKey,blob>`,write-through);`global_manager` 預設 store 已換;測試 `chunked_store_packs_zones`(同 chunk 兩 zone 互不污染 + partial update + 打包成單檔)。
-- [ ] (後)chunk 預取:踏進 chunk 一次讀出 N 個 zone → N 個 registry(拿 streaming 平順度,不破壞 invariant)。
+- [x] **chunk 預取 + ES 式滾動視窗**:`ZoneStore::group_of`(回傳同 chunk 已存檔 keys)+ `GlobalManager::prefetch(key)`(暖整個 storage chunk)+ `stream_around(center, radius)`(以玩家所在 zone 為中心維持 (2r+1)² 同層視窗:載入磁碟上存在的、卸載滾出的;對應上古卷軸 `uGridsToLoad`,建議 Region radius≈2、Area=0)。測試 `prefetch_loads_chunk`、`stream_around_window`。仍是 per-zone registry、不合併,invariant 不變。
 - [ ] (後)`GlobalManager::tick` 依 ZoneType 分派;off-screen 聚合走 `ChildZoneSummary`。
-- [ ] (後)Area 地格的 `tdarray` 資源化 + Things-as-entity 範例 + round-trip 測試。
-- [ ] (後)實際遊戲 component / system(由使用者主導)。
+- [x] **Area 第一批 component**:`AreaTerrain`(`tdarray<Tile>` 單例 component,走 snapshot 存檔)、`Blocking`(逐 entity 阻擋);登錄 `all_components.h`、各有 round-trip 測試。(移除了示範用的 `Owner`;底層 `CrossZoneRef` 機制保留。)
+- [ ] (後)更多遊戲 component / system:actor 生命(部位傷害)/ 耐力 / 士氣、需求(馬斯洛)、AI、日程…由使用者主導,參 gamecore 004/005。
+- [ ] (後)roof / fog / path 等平行地格網格(按系統需要)。
 
 ---
 
-## 7. 開放問題
+## 7. 已決(記錄)與仍開放
 
-- **registry 粒度【方案 B 定案 2026-05-27】**:調查 `work/design/registry_chunking_investigation.md`。**不**合併 registry(方案 A:raw `entt::entity` 會撞命名空間、需重寫序列化路徑);改在 `ZoneStore` 層**合併檔案**(`ChunkedFolderZoneStore`,~3 檔、零 invariant 風險),streaming 平順靠之後的 chunk 預取。分層:**Region = 方案 B,N=5;Area = 1:1 不 chunk**(9×250² 一次載過重)。方案 A 延後且僅限 region。
-- **行動者跨 zone(keystone,下一個要決)**:玩家 / NPC / 軍隊是會在三層間移動的個體。權威身份 + 世界座標放 root、載入的 zone 持有其本地 entity 並以 `CrossZoneRef` 連回 root?還是 actor 在 zone registry 間遷移?未載入 zone 內的敵對軍隊如何 off-screen 模擬(對應 Rimworld WorldPawn / gamecore 影響力場)。
-- **世界邊緣**:預設**有界**(一塊大陸 + 周邊海洋,邊緣為海 / 不可越);要環形(toroidal)再議。(gamecore `002:37`)
-- **跨 z 連通**:地面↔地下↔天空的 portal 規則(哪些格可通、單向?)。
-- **存檔規模**:900 萬潛在 Area + 物件持久化下的增量存檔 / 壓縮(gamecore 開放問題 `006:33`)。
+**已決,待實作 / 後議:**
+- **registry 粒度 → 方案 B**(2026-05-27,詳見 `work/design/registry_chunking_investigation.md`):不合併 registry(方案 A 會撞 entity 命名空間、需重寫序列化路徑);改在 `ZoneStore` 層**合併檔案**(`ChunkedFolderZoneStore`)。Region chunk N=5、Area 1:1。已落地;streaming 平順靠 `prefetch` + ES 式 `stream_around`(已實作)。
+- **行動者跨 zone → C 案**:權威身份 + 世界座標住 root;載入的 zone 放本地分身、以 `CrossZoneRef` 連回 root;未載入軍隊靠 root / `ChildZoneSummary` 聚合模擬(≈ Rimworld WorldPawn / gamecore 影響力場)。細節留待 actor 設計階段。
+
+**仍開放:**
+- **跨 z 連通**:地面↔地下↔天空怎麼接(用 `CrossZoneRef`;哪些格可通、單向?)。
+- **世界邊緣**:預設**有界**(大陸 + 周邊海洋,邊緣為海 / 不可越);要環形(toroidal)再議(gamecore `002:37`)。
+- **時間 / tick 模型**:tick 依 ZoneType 分派、off-screen 聚合演進——之後再處理(見 §4.4)。
+- **存檔規模**:900 萬潛在 Area + 物件持久化的增量存檔 / 壓縮(gamecore `006:33`)。
 
 ---
 

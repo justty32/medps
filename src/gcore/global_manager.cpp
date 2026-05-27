@@ -68,6 +68,39 @@ void GlobalManager::unload(ZoneKey key) {
     loaded_.erase(it);
 }
 
+void GlobalManager::prefetch(ZoneKey key) {
+    for (ZoneKey k : store_->group_of(key))
+        load(k);                       // idempotent: skips already-loaded
+}
+
+void GlobalManager::stream_around(ZoneKey center, int radius) {
+    const ZoneType t  = zone_key_type(center);
+    const int16_t  z  = zone_key_z(center);
+    const int16_t  cx = zone_key_x(center);
+    const int16_t  cy = zone_key_y(center);
+
+    // load every persisted zone inside the window (skip off-world negatives;
+    // a zone not on disk is simply absent -- generation-on-demand is game logic)
+    for (int dy = -radius; dy <= radius; ++dy)
+        for (int dx = -radius; dx <= radius; ++dx) {
+            int nx = cx + dx, ny = cy + dy;
+            if (nx < 0 || ny < 0) continue;
+            ZoneKey nk = make_zone_key(t, static_cast<int16_t>(nx),
+                                          static_cast<int16_t>(ny), z);
+            if (store_->has(nk)) load(nk);
+        }
+
+    // evict loaded same-layer zones that fell outside the window
+    std::vector<ZoneKey> victims;
+    for (auto& [k, reg] : loaded_) {
+        if (zone_key_type(k) != t || zone_key_z(k) != z) continue;
+        int dx = zone_key_x(k) - cx, dy = zone_key_y(k) - cy;
+        if (dx < -radius || dx > radius || dy < -radius || dy > radius)
+            victims.push_back(k);
+    }
+    for (ZoneKey k : victims) unload(k);
+}
+
 std::vector<ZoneKey> GlobalManager::children(ZoneKey parent) {
     std::vector<ZoneKey> out;
     if (auto* preg = parent_registry(parent))

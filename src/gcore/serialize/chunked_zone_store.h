@@ -2,6 +2,7 @@
 #include <map>
 #include <unordered_map>
 #include <string>
+#include <vector>
 #include <optional>
 #include <filesystem>
 #include <fstream>
@@ -49,6 +50,15 @@ public:
     bool has(ZoneKey key) override {
         Chunk& chunk = load_chunk(chunk_key_of(key));
         return chunk.find(key) != chunk.end();
+    }
+
+    // every zone persisted in key's chunk file (the prefetch unit).
+    std::vector<ZoneKey> group_of(ZoneKey key) override {
+        Chunk& chunk = load_chunk(chunk_key_of(key));
+        std::vector<ZoneKey> out;
+        out.reserve(chunk.size());
+        for (auto& [k, blob] : chunk) out.push_back(k);
+        return out;
     }
 
 private:

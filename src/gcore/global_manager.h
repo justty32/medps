@@ -47,6 +47,18 @@ public:
     // serialize a zone to the store and drop it from memory.
     void unload(ZoneKey key);
 
+    // load `key` plus every persisted zone sharing its storage chunk, each as
+    // its own registry (folder backend = just load(key)). Warms a whole chunk
+    // file so crossing zone boundaries inside it costs no extra disk reads.
+    void prefetch(ZoneKey key);
+
+    // Elder-Scrolls-style open-world streaming: keep a (2*radius+1)^2 window of
+    // zones loaded around `center` (same ZoneType + z) -- load in-window zones
+    // that exist on disk, unload same-layer loaded zones that fell outside the
+    // window. Call as the focus (player's zone) moves. Suggested radius: Region
+    // ~2 (5x5, like ES uGridsToLoad); Area 0 (one heavy local map, like an interior).
+    void stream_around(ZoneKey center, int radius);
+
     // list direct child zones of a (loaded) parent WITHOUT loading them.
     // returns empty if the parent zone is not loaded.
     std::vector<ZoneKey> children(ZoneKey parent);
