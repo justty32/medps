@@ -1,4 +1,6 @@
 #include <gcore/zone_key.h>
+#include <gcore/chunk_key.h>
+#include <gcore/serialize/chunked_zone_store.h>
 #include <gcore/components/cross_zone_ref.h>
 #include <gcore/components/zone_meta.h>
 #include <gcore/components/child_zone_summary.h>
@@ -388,6 +390,84 @@ static bool test_tick_system_order() {
     return true;
 }
 
+static bool test_zone_layers_and_parent() {
+    using namespace zone_scale;
+    // an Area built from world-tile (7,8) + region-local (3,4), underground layer
+    auto a = area_key(7, 8, 3, 4, zlayer::Underground);
+    CHECK("area type",  zone_key_type(a) == ZoneType::Area);
+    CHECK("area gx",    zone_key_x(a) == 7 * REGION_DIM + 3);
+    CHECK("area gy",    zone_key_y(a) == 8 * REGION_DIM + 4);
+
+    auto r = parent_of(a);                       // Area -> Region by integer division
+    CHECK("parent is region", zone_key_type(r) == ZoneType::Region);
+    CHECK("region wx",        zone_key_x(r) == 7);
+    CHECK("region wy",        zone_key_y(r) == 8);
+    CHECK("z preserved",      zone_key_z(r) == zlayer::Underground);
+
+    auto w = parent_of(r);                       // Region -> World
+    CHECK("parent is world",  zone_key_type(w) == ZoneType::World);
+    CHECK("world parent root", parent_of(w) == ZONE_ROOT);
+    return true;
+}
+
+static bool test_chunk_key_grouping() {
+    using namespace zone_scale;
+    auto r_a = region_key(10, 10);
+    auto r_b = region_key(12, 11);   // same 5×5 chunk as r_a
+    auto r_c = region_key(20, 20);   // different chunk
+    CHECK("same chunk",   chunk_key_of(r_a) == chunk_key_of(r_b));
+    CHECK("diff chunk",   chunk_key_of(r_a) != chunk_key_of(r_c));
+    CHECK("chunk coord",  zone_key_x(chunk_key_of(r_a)) == 10 / REGION_CHUNK);
+    // Area is 1:1 -> its own chunk
+    auto a = area_key(3, 4, 1, 2);
+    CHECK("area self-chunk", chunk_key_of(a) == a);
+    return true;
+}
+
+static bool test_chunked_store_packs_zones() {
+    auto dir = std::filesystem::temp_directory_path() / "medps_test_chunk";
+    std::filesystem::remove_all(dir);
+
+    auto r_a = region_key(10, 10);
+    auto r_b = region_key(12, 11);   // lands in the same chunk as r_a
+    bool ok = (chunk_key_of(r_a) == chunk_key_of(r_b));   // precondition of this test
+
+    {   // write two zones that share a chunk
+        ChunkedFolderZoneStore s{dir};
+        s.write(r_a, "alpha");
+        s.write(r_b, "bravo");
+        s.flush();
+    }
+
+    // both zones packed into ONE chunk file (the whole point of Plan B)
+    int chunk_files = 0;
+    if (std::filesystem::exists(dir))
+        for (auto& e : std::filesystem::directory_iterator(dir))
+            if (e.path().extension() == ".chunk") ++chunk_files;
+    if (chunk_files != 1) ok = false;
+
+    {   // reopen: each zone round-trips independently
+        ChunkedFolderZoneStore s2{dir};
+        auto a = s2.read(r_a);
+        auto b = s2.read(r_b);
+        if (!a || *a != "alpha") ok = false;
+        if (!b || *b != "bravo") ok = false;
+        s2.write(r_a, "ALPHA2");          // overwrite one zone in the chunk
+    }
+    {   // partial update must not clobber the other zone in the same chunk
+        ChunkedFolderZoneStore s3{dir};
+        auto a = s3.read(r_a);
+        auto b = s3.read(r_b);
+        if (!a || *a != "ALPHA2") ok = false;
+        if (!b || *b != "bravo")  ok = false;
+        if (s3.has(region_key(99, 99))) ok = false;   // absent zone -> not present
+    }
+
+    std::filesystem::remove_all(dir);
+    CHECK("two zones share one chunk file, independent round-trip + partial update", ok);
+    return true;
+}
+
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -422,6 +502,9 @@ int main() {
         { "owner_roundtrip",            test_owner_roundtrip            },
         { "tick_per_loaded_zone",       test_tick_runs_per_loaded_zone  },
         { "tick_system_order",          test_tick_system_order          },
+        { "zone_layers_and_parent",     test_zone_layers_and_parent     },
+        { "chunk_key_grouping",         test_chunk_key_grouping         },
+        { "chunked_store_packs_zones",  test_chunked_store_packs_zones  },
         { "serialize_empty",            test_serialize_empty            },
     };
 

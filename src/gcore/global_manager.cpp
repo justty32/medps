@@ -1,11 +1,12 @@
 #include "global_manager.h"
 #include "serialize/zone_io.h"
+#include "serialize/chunked_zone_store.h"
 #include "components/zone_meta.h"
 #include "components/child_zone_summary.h"
 #include <sstream>
 
 GlobalManager::GlobalManager()
-    : GlobalManager(std::make_unique<FolderZoneStore>("zones")) {}
+    : GlobalManager(std::make_unique<ChunkedFolderZoneStore>("zones")) {}
 
 GlobalManager::GlobalManager(std::unique_ptr<ZoneStore> store)
     : store_(std::move(store)) {}

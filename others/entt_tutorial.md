@@ -1,7 +1,7 @@
 # EnTT 教學（medps 版）
 
 > 對應版本:**EnTT v3.16.0**(已 pin,single header `include/entt.hpp`)。
-> 環境:C++20 / MSVC。本文配合 `work/plan_ecs_rewrite.md` 的 ECS 重寫規劃撰寫,範例直接以本專案的用法為主。
+> 環境:C++20 / MSVC。範例直接以本專案的用法為主,核心世界結構設計見 `work/design/zone_layers.md`。
 > 引入方式:`#include <entt.hpp>`(single-include amalgamation;不要混用 `extern/entt/src/`,以免版本不一致)。
 
 ---
@@ -14,11 +14,11 @@ ECS(Entity-Component-System)把「資料」與「行為」徹底分離:
 - **Component(元件)**:純資料(理想上是 POD aggregate)。一個 entity 可掛任意多種 component。
 - **System(系統)**:自由函式,查詢「擁有某組 component 的所有 entity」並處理之。
 
-本專案的取捨(見 `plan_ecs_rewrite.md`):
+本專案的取捨:
 - **只有動態行動者**(unit / city / hero / faction)是 entity。
 - **地圖維持 grid**(`tdarray<Tile>`),不進 registry。
-- `Obj` / `Scene` 保留給單例系統;`entt::registry` 專管 entity。
-- System 一律寫成吃 `World&` 的自由函式,`World` 持有 `entt::registry`。
+- entity 全由 `entt::registry` 管理;全局 / 單例狀態放 **root registry(`ZONE_ROOT`)或 `GlobalManager`**——不再有 `Obj` / `Scene`。
+- System 一律寫成吃 `entt::registry&` 的自由函式。
 
 ---
 
@@ -100,9 +100,9 @@ struct Owner {
 };
 ```
 
-規則(摘自 `plan_ecs_rewrite.md`):
+規則:
 - 盡量是 POD aggregate;不要塞虛擬函式 / 複雜建構式。
-- **entity 參照存 `entt::entity`**(序列化時當整數處理,見第 7 節),不要存 `Position*`/`Obj*`。
+- **entity 參照存 `entt::entity`**(序列化時當整數處理,見第 7 節),不要存裸指標(如 `Position*`);跨 zone 參照存 `CrossZoneRef`。
 - 含 STL 成員(`std::vector` 等)沒關係,交給 cereal **逐欄位**序列化,不要整 struct `memcpy`。
 
 ---
@@ -147,21 +147,14 @@ auto moving = registry.view<Position>(entt::exclude<Frozen>);
 
 ---
 
-## 4. System:吃 `World&` 的自由函式
+## 4. System:吃 `entt::registry&` 的自由函式
 
-本專案不把 system 做成 class,而是自由函式。`World` 持有 registry:
+本專案不把 system 做成 class,而是自由函式,直接吃所屬 zone 的 registry:
 
 ```cpp
-// src/gcore/world.h
-struct World {
-    entt::registry registry;
-    Scene scene;          // 單例系統(沿用舊 Obj/Scene)
-    // ... 地圖 grid: tdarray<Tile>
-};
-
-// src/gcore/systems/movement.cpp
-void movement_system(World &world, float dt) {
-    world.registry.view<Position, Velocity>().each(
+// src/gcore/systems/movement.h
+inline void movement_system(entt::registry &registry, float dt) {
+    registry.view<Position, Velocity>().each(
         [dt](Position &pos, Velocity &vel) {
             pos.x += vel.dx * dt;
             pos.y += vel.dy * dt;
@@ -169,13 +162,13 @@ void movement_system(World &world, float dt) {
 }
 ```
 
-執行順序:Phase 4 規劃「先用一個有序清單跑 system,不過度設計」。例如:
+執行順序:`GlobalManager::tick` 對每個已載入的 zone 依序跑 system,先用一個有序清單,不過度設計。例如:
 
 ```cpp
-void tick(World &world, float dt) {
-    movement_system(world, dt);
-    // combat_system(world);
-    // economy_system(world);
+void tick_zone(entt::registry &registry, float dt) {
+    movement_system(registry, dt);
+    // combat_system(registry);
+    // economy_system(registry);
 }
 ```
 
@@ -299,7 +292,7 @@ struct input_archive {
 
 ### 7.3 Component 型別清單只能有「一份來源」
 
-snapshot 的 save 與 load 必須列出**完全相同、相同順序**的 component。為避免重蹈 `obj_types_list.cpp` 漏列的覆轍,用單一來源驅動兩邊(規劃 Phase 2):
+snapshot 的 save 與 load 必須列出**完全相同、相同順序**的 component。為避免漏列 / 順序不一致,用單一來源驅動兩邊:
 
 ```cpp
 // src/gcore/serialize/all_components.h
@@ -310,13 +303,14 @@ using AllComponents = entt::type_list<Position, Velocity, Owner /* , ... */>;
 
 ---
 
-## 8. 與本專案重寫階段的對應
+## 8. 與本專案架構的對應
 
-| 規劃階段 | 用到的 EnTT 重點 |
+| 本專案模組 | 用到的 EnTT 重點 |
 |---|---|
-| Phase 2:導入 `World` + registry | `entt::registry`、首批 POD component(至少 `Position`)、snapshot adapter |
-| Phase 3:汰除舊 Component 系統 | `MapEntity` → 拆成 `Position` 等 component;`TileMap` 改成 grid/單例,不進 registry |
-| Phase 4:systems 層 | view + 吃 `World&` 的自由函式、有序清單跑 tick |
+| 每個 zone 一個 `entt::registry`(`GlobalManager` 管理) | `entt::registry` 建立 / 銷毀、entity 生命週期 |
+| `components/`(POD component) | `Position` / `Velocity` / `Owner` / `CrossZoneRef` 等 aggregate;entity 參照存 `entt::entity` |
+| `systems/`(吃 `entt::registry&` 的自由函式) | view + `each`、`GlobalManager::tick` 有序清單跑 system |
+| `serialize/`(snapshot + cereal) | `snapshot` / `snapshot_loader`、adapter、`AllComponents` 單一來源 |
 
 ---
 
@@ -334,4 +328,4 @@ using AllComponents = entt::type_list<Position, Velocity, Owner /* , ... */>;
 
 - EnTT 官方文件(對應 3.x):https://github.com/skypjack/entt/wiki
 - 本專案序列化搭配:`others/cereal_tutorial.md`
-- 重寫規劃:`work/plan_ecs_rewrite.md`
+- 核心世界結構設計:`work/design/zone_layers.md`

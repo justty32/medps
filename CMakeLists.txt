@@ -9,6 +9,12 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED True)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Source files are UTF-8 (they carry CJK comments). Tell MSVC so explicitly,
+# otherwise it decodes them as the system code page (e.g. cp950) and warns C4819.
+if(MSVC)
+	add_compile_options(/utf-8)
+endif()
+
 #set(BUILD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/bin)
 set(BUILD_PATH ${PROJECT_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${BUILD_PATH}")

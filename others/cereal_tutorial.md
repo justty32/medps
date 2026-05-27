@@ -1,7 +1,7 @@
 # cereal 教學（medps 版）
 
 > 對應版本:**cereal v1.3.2**(已 vendor 至 `include/cereal/`)。
-> 環境:C++20 / MSVC。本文配合 `work/plan_ecs_rewrite.md` Phase 1（取代 BinFSR）撰寫,範例貼合本專案用法。
+> 環境:C++20 / MSVC。本文記錄本專案以 cereal 取代 BinFSR 的用法,核心世界結構設計見 `work/design/zone_layers.md`。
 > 引入方式:`#include <cereal/archives/portable_binary.hpp>` 等;**不需要編譯任何 .cpp**,cereal 全 header-only。
 
 ---
@@ -167,46 +167,48 @@ CEREAL_CLASS_VERSION(UnitData, 2)
 
 ---
 
-## 5. 多型序列化（取代 `obj_types_list.cpp` 工廠）
+## 5. 多型序列化（cereal 的一般機制）
 
-若要直接存/讀 `Obj*` 指標,cereal 提供多型支援(Phase 1 規劃的「可選優化」):
+> **本專案不用這個**:entity 全由 `entt::registry` 管理、跨 zone 參照存 `CrossZoneRef`,component 內不存多型基底指標,因此這節純屬 cereal 機制備忘。
+
+若要直接存/讀某個多型基底指標,cereal 提供多型支援。以一個中性的 `Shape` 基底為例:
 
 ```cpp
-// obj.h（基底）
-class Obj {
+// shape.h（基底）
+class Shape {
 public:
-    virtual ~Obj() = default;
+    virtual ~Shape() = default;
     template<class Archive>
     void serialize(Archive &ar) { ar(id); }
 private:
     int id{};
 };
 
-// city.h（子類）
+// circle.h（子類）
 #include <cereal/types/polymorphic.hpp>
-class City : public Obj {
+class Circle : public Shape {
 public:
     template<class Archive>
     void serialize(Archive &ar) {
-        ar(cereal::base_class<Obj>(this));  // 先序列化父類
-        ar(population);
+        ar(cereal::base_class<Shape>(this));  // 先序列化父類
+        ar(radius);
     }
 private:
-    int population{};
+    float radius{};
 };
 
 // 登錄(通常在 .cpp 裡,確保被連結)
-CEREAL_REGISTER_TYPE(City)
-// 若 City 是透過 Obj* 被存取,還需指定關係:
-CEREAL_REGISTER_POLYMORPHIC_RELATION(Obj, City)
+CEREAL_REGISTER_TYPE(Circle)
+// 若 Circle 是透過 Shape* 被存取,還需指定關係:
+CEREAL_REGISTER_POLYMORPHIC_RELATION(Shape, Circle)
 
 // 使用時:
-std::shared_ptr<Obj> obj = std::make_shared<City>();
-out(obj);   // 自動存型別資訊 + City 的資料
-in(obj);    // 自動用 City 建構
+std::shared_ptr<Shape> shape = std::make_shared<Circle>();
+out(shape);   // 自動存型別資訊 + Circle 的資料
+in(shape);    // 自動用 Circle 建構
 ```
 
-> **本專案初期不強制做**,Phase 1 評估是否用這個取代手動 type-id 工廠。若用,需引入 `cereal/types/polymorphic.hpp` 及 `cereal/types/memory.hpp`。
+> 若哪天確實要用,需引入 `cereal/types/polymorphic.hpp` 及 `cereal/types/memory.hpp`。
 
 ---
 
@@ -222,25 +224,25 @@ cereal 作為 EnTT snapshot 的位元格式層,透過 `others/entt_tutorial.md` 
 #include "src/gcore/serialize/entt_cereal_archive.h"
 #include "src/gcore/serialize/all_components.h"  // AllComponents type_list
 
-// ---- 存 ----
-void save_world(const World &world, std::ostream &os) {
+// ---- 存（單一 zone 的 registry）----
+void save_zone(const entt::registry &registry, std::ostream &os) {
     cereal::PortableBinaryOutputArchive cereal_out{os};
     output_archive out{cereal_out};
 
-    entt::snapshot{world.registry}
+    entt::snapshot{registry}
         .get<entt::entity>(out)
         .get<Position>(out)
         .get<Velocity>(out)
         .get<Owner>(out);
-    // 若用 AllComponents 清單展開,可避免手動列出(Phase 2 實作)
+    // 實際上用 AllComponents 清單展開,避免手動列出(見 serialize/zone_io.h)
 }
 
 // ---- 讀 ----
-void load_world(World &world, std::istream &is) {
+void load_zone(entt::registry &registry, std::istream &is) {
     cereal::PortableBinaryInputArchive cereal_in{is};
     input_archive in{cereal_in};
 
-    entt::snapshot_loader{world.registry}
+    entt::snapshot_loader{registry}
         .get<entt::entity>(in)
         .get<Position>(in)
         .get<Velocity>(in)
@@ -249,7 +251,7 @@ void load_world(World &world, std::istream &is) {
 }
 ```
 
-注意:EnTT snapshot 與 cereal archive 是**同一個 stream**——世界存檔是一個連續的位元流,先是 entity 表、再依序是各 component 的資料塊。讀取順序必須與寫入完全一致。
+注意:EnTT snapshot 與 cereal archive 是**同一個 stream**——一個 zone 的存檔是一個連續的位元流,先是 entity 表、再依序是各 component 的資料塊。讀取順序必須與寫入完全一致。
 
 ---
 
@@ -266,9 +268,9 @@ void load_world(World &world, std::istream &is) {
 
 ---
 
-## 8. `Scene`、`tdarray` 的序列化規劃（Phase 1）
+## 8. `tdarray<T>` 的序列化
 
-### `tdarray<T>`
+地圖等 grid 資料以 `tdarray<T>`(`src/gcore/util/tdarray.hpp`)承載,不進 registry,直接用 cereal 序列化:
 
 ```cpp
 template<typename T>
@@ -284,13 +286,7 @@ struct tdarray {
 CEREAL_CLASS_VERSION(tdarray<Tile>, 1)
 ```
 
-### `Obj` 基底 + `Scene`
-
-`Scene` 持有 `Obj` 子類集合,可走兩條路:
-1. **型別 id 工廠(現有)**:讀時先讀 type_id,工廠建構,再呼叫子類 `load`——保留現有邏輯,只把 `BinFSR::stream` 換成 `cereal archive`。
-2. **cereal 多型**(`CEREAL_REGISTER_TYPE`):直接存 `shared_ptr<Obj>`,自動帶型別資訊——Phase 1 評估是否值得換。
-
-Phase 1 最小風險路線:**先走路線 1**,讓 Scene 能 round-trip,再評估路線 2。
+> entity 由 `entt::registry` 經 snapshot 序列化(見第 6 節);grid 這類非 entity 的世界資料則直接交給 cereal。
 
 ---
 
@@ -301,7 +297,7 @@ Phase 1 最小風險路線:**先走路線 1**,讓 Scene 能 round-trip,再評估
 - **`CEREAL_CLASS_VERSION` 位置**:必須在全域 namespace;寫在 class 內或 anonymous namespace 編譯不過。
 - **enum 欄位**:cereal 不序列化 enum。要嘛 `static_cast<underlying_type>` 後存整數、讀回再轉,要嘛用 `cereal/types/common.hpp`(只支援 C++14 enum,不保證所有編譯器)。`entt::entity` 也是 enum,本專案在 adapter 裡顯式轉整數處理。
 - **模板連結**:`CEREAL_REGISTER_TYPE` 要確保對應的 .cpp 被連結進來;放 header-only 裡可能因為 ODR 有問題,建議放 .cpp。
-- **cereal 不支援裸指標存**(`T*`),只支援 `std::shared_ptr` / `std::unique_ptr` 多型;本專案 component 內部不存 `Obj*`,改存 `entt::entity`,因此不踩這個坑。
+- **cereal 不支援裸指標存**(`T*`),只支援 `std::shared_ptr` / `std::unique_ptr` 多型;本專案 component 內部不存裸指標,改存 `entt::entity`(跨 zone 則用 `CrossZoneRef`),因此不踩這個坑。
 
 ---
 
@@ -356,4 +352,4 @@ int main() {
 
 - cereal 官方文件:https://uscilab.github.io/cereal/
 - 本專案 EnTT 搭配:`others/entt_tutorial.md`（§7 snapshot + adapter）
-- 重寫規劃:`work/plan_ecs_rewrite.md`（Phase 0–2）
+- 核心世界結構設計:`work/design/zone_layers.md`

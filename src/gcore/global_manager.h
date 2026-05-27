@@ -24,8 +24,8 @@ class GlobalManager {
 public:
     entt::registry root;   // ZONE_ROOT, always live
 
-    // defaults to a folder backend at "zones"; inject another ZoneStore to
-    // change where/how zones are persisted (single pack file, DB, ...).
+    // defaults to a chunked folder backend at "zones" (zones packed per chunk
+    // file; Plan B). Inject another ZoneStore to change where/how zones persist.
     GlobalManager();
     explicit GlobalManager(std::unique_ptr<ZoneStore> store);
 
