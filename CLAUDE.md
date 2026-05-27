@@ -40,7 +40,7 @@ work/               — 分析工作空間（Claude Code 輸出）
 | `src/gcore/serialize/zone_io.h` | 單一 zone 的 snapshot save/load |
 | `src/gcore/serialize/zone_store.h` | `GlobalManager` ↔ 磁碟儲存的抽象（`FolderZoneStore` 一 zone 一檔） |
 | `src/gcore/serialize/chunked_zone_store.h` | `ChunkedFolderZoneStore`：多個 zone blob 打包進一個 chunk 檔（預設 store，方案 B） |
-| `src/gcore/components/*.h` | POD component（position, owner, velocity, zone_meta, child_zone_summary, cross_zone_ref） |
+| `src/gcore/components/*.h` | POD component（zone_meta, child_zone_summary, cross_zone_ref, position, velocity, area_terrain, blocking） |
 | `src/gcore/systems/movement.h` | movement 系統（吃 `entt::registry&` 的自由函式） |
 | `src/gcore/util/tdarray.hpp` | `tdarray<T>` 2D 陣列模板（已 cereal 化） |
 | `src/gcore/util/mydef.h` | metaprogramming macros（仍使用中） |

@@ -5,7 +5,8 @@
 #include "../components/cross_zone_ref.h"
 #include "../components/position.h"
 #include "../components/velocity.h"
-#include "../components/owner.h"
+#include "../components/area_terrain.h"
+#include "../components/blocking.h"
 
 // Single source of truth for snapshot save/load order.
 // Add new component types here; both save and load expand this list.
@@ -15,5 +16,6 @@ using AllComponents = entt::type_list<
     CrossZoneRef,
     Position,
     Velocity,
-    Owner
+    AreaTerrain,
+    Blocking
 >;

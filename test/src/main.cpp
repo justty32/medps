@@ -6,7 +6,8 @@
 #include <gcore/components/child_zone_summary.h>
 #include <gcore/components/position.h>
 #include <gcore/components/velocity.h>
-#include <gcore/components/owner.h>
+#include <gcore/components/area_terrain.h>
+#include <gcore/components/blocking.h>
 #include <gcore/systems/movement.h>
 #include <gcore/serialize/zone_io.h>
 #include <gcore/serialize/zone_store.h>
@@ -296,49 +297,6 @@ static bool test_position_roundtrip() {
     return true;
 }
 
-static bool test_owner_resolves_to_root_faction() {
-    GlobalManager gm;
-    // faction is a global entity in root
-    auto faction = gm.root.create();
-
-    // a unit lives in an area zone, owned by that faction (cross-zone ref)
-    auto areaKey = make_zone_key(ZoneType{2}, 1, 1, 0);
-    auto& area = gm.create(areaKey, ZONE_ROOT);
-    auto unit = area.create();
-    area.emplace<Position>(unit, 5, 6);
-    area.emplace<Owner>(unit, CrossZoneRef{ZONE_ROOT, faction});
-
-    // resolve the unit's owner back to the root faction entity
-    auto& own = area.get<Owner>(unit);
-    auto res = gm.resolve(own.faction);
-
-    CHECK("owner resolves to root", res.reg == &gm.root);
-    CHECK("owner entity is faction", res.entity == faction);
-    CHECK("owner valid",             res.valid());
-    return true;
-}
-
-static bool test_owner_roundtrip() {
-    // Owner (wrapping a CrossZoneRef) must survive serialization
-    entt::registry src;
-    auto e = src.create();
-    src.emplace<Owner>(e, CrossZoneRef{ZONE_ROOT, entt::entity{77}});
-
-    std::stringstream ss;
-    zone_io::save(src, ss);
-
-    entt::registry dst;
-    zone_io::load(dst, ss);
-
-    bool ok = false;
-    for (auto en : dst.view<Owner>()) {
-        auto& o = dst.get<Owner>(en);
-        ok = (o.faction.zone == ZONE_ROOT && o.faction.local_entity == entt::entity{77});
-    }
-    CHECK("owner ref survived", ok);
-    return true;
-}
-
 static bool test_tick_runs_per_loaded_zone() {
     GlobalManager gm;
     gm.add_zone_system(systems::movement);
@@ -468,6 +426,48 @@ static bool test_chunked_store_packs_zones() {
     return true;
 }
 
+static bool test_blocking_roundtrip() {
+    entt::registry src;
+    auto e = src.create();
+    src.emplace<Blocking>(e, false, true);   // blocks_move=false, blocks_sight=true
+
+    std::stringstream ss;
+    zone_io::save(src, ss);
+    entt::registry dst;
+    zone_io::load(dst, ss);
+
+    bool ok = false;
+    for (auto en : dst.view<Blocking>()) {
+        auto& b = dst.get<Blocking>(en);
+        ok = (!b.blocks_move && b.blocks_sight);
+    }
+    CHECK("blocking round-trip", ok);
+    return true;
+}
+
+static bool test_area_terrain_roundtrip() {
+    entt::registry src;
+    auto m = src.create();
+    auto& at = src.emplace<AreaTerrain>(m);
+    at.tiles.alloc(3, 3);
+    at.tiles.set(1, 2, Tile{7, TILE_WALKABLE});
+
+    std::stringstream ss;
+    zone_io::save(src, ss);
+    entt::registry dst;
+    zone_io::load(dst, ss);
+
+    bool ok = false;
+    for (auto e : dst.view<AreaTerrain>()) {
+        auto& g = dst.get<AreaTerrain>(e);
+        Tile t = g.tiles.getval(1, 2);
+        ok = (g.tiles.sx == 3 && g.tiles.sy == 3
+              && t.terrain == 7 && (t.flags & TILE_WALKABLE));
+    }
+    CHECK("area terrain grid round-trip", ok);
+    return true;
+}
+
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -498,13 +498,13 @@ int main() {
         { "zone_path_deterministic",    test_zone_path_deterministic    },
         { "save_load_root",             test_save_load_root             },
         { "position_roundtrip",         test_position_roundtrip         },
-        { "owner_resolves_faction",     test_owner_resolves_to_root_faction },
-        { "owner_roundtrip",            test_owner_roundtrip            },
         { "tick_per_loaded_zone",       test_tick_runs_per_loaded_zone  },
         { "tick_system_order",          test_tick_system_order          },
         { "zone_layers_and_parent",     test_zone_layers_and_parent     },
         { "chunk_key_grouping",         test_chunk_key_grouping         },
         { "chunked_store_packs_zones",  test_chunked_store_packs_zones  },
+        { "blocking_roundtrip",         test_blocking_roundtrip         },
+        { "area_terrain_roundtrip",     test_area_terrain_roundtrip     },
         { "serialize_empty",            test_serialize_empty            },
     };
 
