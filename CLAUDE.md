@@ -67,7 +67,6 @@ cmake -S . -B build && cmake --build build
 
 詳細分析留存於 `work/`：
 - `work/design/zone_layers.md` — 核心世界結構設計（zone 分層 / streaming）
-- `work/session_log.md` — 操作日誌
 
 ## 開發慣例
 
