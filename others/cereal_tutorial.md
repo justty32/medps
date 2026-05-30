@@ -169,7 +169,7 @@ CEREAL_CLASS_VERSION(UnitData, 2)
 
 ## 5. 多型序列化（cereal 的一般機制）
 
-> **本專案不用這個**:entity 全由 `entt::registry` 管理、跨 zone 參照存 `CrossZoneRef`,component 內不存多型基底指標,因此這節純屬 cereal 機制備忘。
+> **本專案不用這個**:entity 全由 `entt::registry` 管理、entity 參照存 `entt::entity`,component 內不存多型基底指標,因此這節純屬 cereal 機制備忘。
 
 若要直接存/讀某個多型基底指標,cereal 提供多型支援。以一個中性的 `Shape` 基底為例:
 
@@ -297,7 +297,7 @@ CEREAL_CLASS_VERSION(tdarray<Tile>, 1)
 - **`CEREAL_CLASS_VERSION` 位置**:必須在全域 namespace;寫在 class 內或 anonymous namespace 編譯不過。
 - **enum 欄位**:cereal 不序列化 enum。要嘛 `static_cast<underlying_type>` 後存整數、讀回再轉,要嘛用 `cereal/types/common.hpp`(只支援 C++14 enum,不保證所有編譯器)。`entt::entity` 也是 enum,本專案在 adapter 裡顯式轉整數處理。
 - **模板連結**:`CEREAL_REGISTER_TYPE` 要確保對應的 .cpp 被連結進來;放 header-only 裡可能因為 ODR 有問題,建議放 .cpp。
-- **cereal 不支援裸指標存**(`T*`),只支援 `std::shared_ptr` / `std::unique_ptr` 多型;本專案 component 內部不存裸指標,改存 `entt::entity`(跨 zone 則用 `CrossZoneRef`),因此不踩這個坑。
+- **cereal 不支援裸指標存**(`T*`),只支援 `std::shared_ptr` / `std::unique_ptr` 多型;本專案 component 內部不存裸指標,改存 `entt::entity`,因此不踩這個坑。
 
 ---
 

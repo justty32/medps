@@ -102,7 +102,7 @@ struct Owner {
 
 規則:
 - 盡量是 POD aggregate;不要塞虛擬函式 / 複雜建構式。
-- **entity 參照存 `entt::entity`**(序列化時當整數處理,見第 7 節),不要存裸指標(如 `Position*`);跨 zone 參照存 `CrossZoneRef`。
+- **entity 參照存 `entt::entity`**(序列化時當整數處理,見第 7 節),不要存裸指標(如 `Position*`)。
 - 含 STL 成員(`std::vector` 等)沒關係,交給 cereal **逐欄位**序列化,不要整 struct `memcpy`。
 
 ---
@@ -308,7 +308,7 @@ using AllComponents = entt::type_list<Position, Velocity, Owner /* , ... */>;
 | 本專案模組 | 用到的 EnTT 重點 |
 |---|---|
 | 每個 zone 一個 `entt::registry`(`GlobalManager` 管理) | `entt::registry` 建立 / 銷毀、entity 生命週期 |
-| `components/`(POD component) | `Position` / `Velocity` / `Owner` / `CrossZoneRef` 等 aggregate;entity 參照存 `entt::entity` |
+| `components/`(POD component) | `Position` / `Velocity` / `ZoneMeta` / `WorldConfig` 等 aggregate;entity 參照存 `entt::entity` |
 | `systems/`(吃 `entt::registry&` 的自由函式) | view + `each`、`GlobalManager::tick` 有序清單跑 system |
 | `serialize/`(snapshot + cereal) | `snapshot` / `snapshot_loader`、adapter、`AllComponents` 單一來源 |
 

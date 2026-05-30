@@ -26,8 +26,7 @@ struct Skill {
 規則:
 - Component 盡量是 POD aggregate,不帶虛擬函式。
 - STL 成員(`std::vector`、`std::string` 等)要對應引入 cereal type header(`cereal/types/vector.hpp` 等)。
-- `entt::entity` 欄位用 `save`/`load` 分拆處理(參考 `components/cross_zone_ref.h`),cereal 預設不序列化 enum。
-- 跨 zone 的參照不要存裸 `entt::entity`,用 `CrossZoneRef`(參考 `components/owner.h`)。
+- 想存某個 zone 的識別,存它的 `ZoneKey`(uint64,可直接序列化),不要存裸 `entt::entity`——`entt::entity` 只在自己的 registry 內有效,跨 registry 沒有意義(範例:`components/zone_meta.h` 就是存 `ZoneKey self/parent`)。
 
 ---
 
@@ -39,11 +38,11 @@ struct Skill {
 
 using AllComponents = entt::type_list<
     ZoneMeta,
-    ChildZoneSummary,
-    CrossZoneRef,
     Position,
     Velocity,
-    Owner,
+    AreaTerrain,
+    Blocking,
+    WorldConfig,
     Skill          // <-- 2. 加在最後
 >;
 ```
@@ -56,12 +55,11 @@ using AllComponents = entt::type_list<
 
 ## 新增 System
 
-回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `others/entt_tutorial.md` §4)。本專案分兩種:
+回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `others/entt_tutorial.md` §4)。本專案的 system 簽名固定:
 
 | 種類 | 簽名 | 跑在哪 |
 |---|---|---|
-| **per-zone**(目前支援) | `void(entt::registry&)` | `GlobalManager::tick()` 對每個 loaded zone 各跑一次 |
-| **cross-zone**(待規劃) | `void(GlobalManager&)` | 需要 `resolve` / 跨 zone;觸發模型未定,暫時手動呼叫 |
+| **per-zone** | `void(entt::registry&)` | `GlobalManager::tick()` 對每個 loaded zone 各跑一次 |
 
 ### Step 1：在 `src/gcore/systems/` 建 header
 
@@ -87,7 +85,7 @@ inline void tick_cooldown(entt::registry& reg) {
 規則:
 - per-zone system 一律 `void(entt::registry&)` 的自由函式,不做成 class。
 - 若 system 需要跨 tick 的暫存狀態,放在呼叫端(`GlobalManager` 或其持有的物件),不要放進 component。
-- 先用 `view`,不要過早用 `group`。
+- 用 `view` 查詢 component。
 - 遍歷 view 時若要建/刪 entity,先收集、迴圈外再做(見 `entt_tutorial.md` §9)。
 
 ---
@@ -108,7 +106,7 @@ gm.tick();   // 對每個「已載入」的 zone 跑所有註冊的 per-zone sys
 重點:
 - **執行順序 = 註冊順序**。先 `add` 的先跑。
 - `tick()` **只跑 loaded zones**;**root 不跑**(它放全局實體,不是地圖 actor)。
-- 未載入的 zone 不在記憶體,不會被 tick(streaming 的本質;離線追算之後再規劃)。
+- 未載入的 zone 不在記憶體,不會被 tick;要它跑就先 `load`(離線追算之後再規劃)。
 
 ### 需要額外參數(如 dt)?用 lambda 綁進去
 
@@ -189,7 +187,7 @@ static bool test_cooldown_ticks_down() {
 
 - EnTT 基礎(view / system / entity):`others/entt_tutorial.md`
 - cereal 序列化:`others/cereal_tutorial.md`
-- zone / streaming / tick 全貌:`others/zone_streaming_architecture.md`
+- zone / registry / tick 架構全貌:`others/zone_streaming_architecture.md`
 - 實際範例:`src/gcore/systems/movement.h`、`src/gcore/components/`
 - component 型別清單:`src/gcore/serialize/all_components.h`
 - 現有測試:`test/src/main.cpp`

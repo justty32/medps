@@ -1,7 +1,7 @@
 # medps 世界結構設計:三層 zone + root
 
-> 初版 2026-05-27。分支:`rewrite/entt-cereal`。
-> 本文取代已刪除的 `work/plan_ecs_rewrite.md`,是核心**世界結構 / ZoneType / 地格換算**的設計依據。
+> 初版 2026-05-27;2026-05-30 重構後對齊原始碼。
+> 本文是核心**世界結構 / ZoneType / 地格換算**的設計依據。
 > 標記說明:**【定案】**=使用者已拍板;**【建議】**=我的推薦待確認;**【開放】**=尚未決定。
 
 ---
@@ -17,8 +17,8 @@
 
 | 層 | ZoneType | 體驗參照 | 一張圖尺寸 | 一格尺度 | 時間模型 | 全局數量級 |
 |---|---|---|---|---|---|---|
-| (全局) | `Invalid=0` / ROOT | — | 無地圖 | — | 跨層 delta 結算 | 1(永久存活) |
-| 世界層 | `World=1` | 文明(Civ) | ≤ 200×200 | 一格 ≈ 數公里 | 純回合,1 回合 ≈ 一日 | 1(每 z 層一張) |
+| (全局) | `Invalid=0` / ROOT | — | 無地圖 | — | — | 1(永久存活) |
+| 世界層 | `World=1` | 文明(Civ) | 預設 200×200 | 一格 ≈ 數公里 | 純回合,1 回合 ≈ 一日 | 1(每 z 層一張) |
 | 戰略層 | `Region=2` | 大戰略 / 聖火降魔錄 | 15×15(或更大) | 一格 ≈ 數十公尺 | 半即時 / WeGo | ≤ 200×200 = 4 萬 |
 | 區域層 | `Area=3` | Rimworld / ToME4 / JRPG | ~250×250 | 一格 ≈ 公尺級 | 即時 / JRPG 回合 | ≤ 3000×3000 ≈ 900 萬 |
 
@@ -39,7 +39,7 @@ enum class ZoneType : uint16_t {
 ```
 
 - 採 `World / Region / Area`(你傾向 world→region;Area 收尾)。
-- **刻意不叫 `Zone`**:本專案裡「zone」已是「任一 registry / streaming 單位」的通稱(`ZoneType`、`ZoneKey`、GlobalManager 管的就是 zones),底層若也叫 Zone 會語意打架。t-engine 用 World→Zone→Level,我們改用 World→Region→Area 避開。
+- **刻意不叫 `Zone`**:本專案裡「zone」已是「任一 registry / 載入單位」的通稱(`ZoneType`、`ZoneKey`、GlobalManager 管的就是 zones),底層若也叫 Zone 會語意打架。t-engine 用 World→Zone→Level,我們改用 World→Region→Area 避開。
 - **嚴格階層的紅利**:`zone_key_type(k)` 一看就知道它在第幾層、parent 是哪一型,parent 座標可由整除推回(見 §3),不必額外存。
 
 ---
@@ -49,14 +49,17 @@ enum class ZoneType : uint16_t {
 定案比例(實作在 `zone_key.h` 的 `zone_scale` namespace,`constexpr`、單一來源、可調):
 
 ```
-WORLD_DIM    = 200   // 世界層 200×200 tiles(一塊大陸 + 周邊海洋)
-REGION_DIM   = 15    // 1 個 World tile  → 1 張 Region 圖(15×15 region-tiles)
-AREA_DIM     = 250   // 1 個 Region tile → 1 張 Area   圖(250×250 area-tiles)
-REGION_CHUNK = 5     // chunk 邊長:5×5 個 region 共一個 chunk 檔(方案 B)
-AREA_CHUNK   = 1     // area 不 chunk(1:1)
+WORLD_DIM_DEFAULT   = 200   // 預設世界層邊長(world-格);實際值存 ROOT 上的 WorldConfig
+WORLD_LAYERS_DEFAULT = 3    // 預設垂直層數:Underground / Ground / Sky(z = −1/0/1)
+REGION_DIM          = 15    // 1 個 World tile  → 1 張 Region 圖(15×15 region-tiles)
+AREA_DIM            = 250   // 1 個 Region tile → 1 張 Area   圖(250×250 area-tiles)
+MAX_WORLD_DIM       = 32766 / REGION_DIM   // = 2184;world_dim 上限,確保 key x/y 不溢位
+// valid_world_dim(wd):wd > 0 && wd * REGION_DIM < 32767
 ```
 
-> 座標換算一律引用這些常數、不散落硬編碼;都是估計值(「或更大」「左右」「最大可能」),保留可調。下文 R1 = `REGION_DIM`、R2 = `AREA_DIM`。
+> WORLD_DIM 不再是單一常數:它是 PER-SAVE 執行期設定,存在 ROOT 上的
+> `WorldConfig{world_dim_x, world_dim_y, world_dim_z}`(見 §4)。`zone_scale` 只給預設值。
+> 座標換算一律引用這些常數 / `WorldConfig`、不散落硬編碼。下文 R1 = `REGION_DIM`、R2 = `AREA_DIM`。
 
 ### ZoneKey 各層 (x,y) 語意 【定案】
 
@@ -66,8 +69,8 @@ AREA_CHUNK   = 1     // area 不 chunk(1:1)
 | 型別 | (x,y) 意義 | 範圍 |
 |---|---|---|
 | World | 單一世界(每 z 一張),固定 (0,0) | 0 |
-| Region | 它所屬的 **world-tile 全局座標** (wx,wy) | 0..199 |
-| Area | 它所屬的 **region-tile 全局座標** (gx,gy) = (wx·R1+rx, wy·R1+ry) | 0..2999 |
+| Region | 它所屬的 **world-tile 全局座標** (wx,wy) | 0..(world_dim−1) |
+| Area | 它所屬的 **region-tile 全局座標** (gx,gy) = (wx·R1+rx, wy·R1+ry) | 0..(world_dim·R1−1) |
 
 - `rx,ry` = 該 Area 在其 Region 內的本地座標(0..14)。
 - **parent 由整除推回**:
@@ -76,9 +79,9 @@ AREA_CHUNK   = 1     // area 不 chunk(1:1)
 
 ### 為何不用重排 ZoneKey 位元 【關鍵結論】
 
-先前擔心 16-bit x/y 放不下細層全局座標。代入定案數字後**綽綽有餘**:Area 的全局 region-tile 座標最大 = 199·15+14 = **2999**,而 int16 上限 32767。
+先前擔心 16-bit x/y 放不下細層全局座標。代入預設數字後**綽綽有餘**:預設 world_dim=200 時,Area 的全局 region-tile 座標最大 = 199·15+14 = **2999**,而 int16 上限 32767。
 → **維持現有 16/16/16/16 佈局,不動 `make_zone_key` / `zone_key_*`**。
-不變量(要寫進測試):`WORLD_DIM · R1 < 32767`(目前 3000,留有約 10× 餘裕,Region 放大到 ~150 仍安全)。
+不變量(由 `valid_world_dim` 把關):`world_dim · R1 < 32767`(預設 3000,留有約 10× 餘裕;world_dim 上限 `MAX_WORLD_DIM`=2184)。
 
 ### z 軸 = 垂直三層 【定案】
 
@@ -89,42 +92,37 @@ namespace zlayer { constexpr int16_t Underground = -1, Ground = 0, Sky = +1; }
 ```
 
 - z 是 ZoneKey 的一部分 → **每個垂直層是各自獨立的 zone**(地下世界圖 ≠ 地面世界圖)。
-- parent 鏈**同 z 不變**:地下 Area 的 parent 是地下 Region。跨 z 的移動(階梯 / 飛行)走 `CrossZoneRef` 跨 zone resolve,不靠 parent 鏈。
+- parent 鏈**同 z 不變**:地下 Area 的 parent 是地下 Region(`parent_of` 沿鏈往上時 z 保持不變)。
+- 垂直層數由 `WorldConfig::world_dim_z` 決定(預設 3 = Underground/Ground/Sky)。
 - 世界觀呼應:泰坦融入大地(地下)、古龍融入天空(`notes/a.txt`)。
 
 ---
 
-## 4. 「一切皆 zone」+ 兩層持久化(t-engine / Rimworld 驗證)
+## 4. 「一切皆 zone」+ 按需載入持久化(t-engine / Rimworld 驗證)
 
 ### 4.1 一切皆 zone(t-engine 驗證)
 
-t-engine(ToME4)沒有獨立的「世界地圖系統」——**大地圖只是一個設了特殊屬性的普通 Zone**,層間切換靠地形格上的 `change_zone` 欄位(`pas/analysis/t-engine/tutorial/12-world-map.md`)。
-對應我們:三層共用同一套 `entt::registry` + GlobalManager 機制,只靠 `ZoneType` tag 與屬性區分;層間切換 = 站到帶 **`CrossZoneRef`** 的格/實體上,resolve 出目標 ZoneKey 與入口位置。`CrossZoneRef` 已存在,正是 t-engine `change_zone` 的對應物。
+t-engine(ToME4)沒有獨立的「世界地圖系統」——**大地圖只是一個設了特殊屬性的普通 Zone**(`pas/analysis/t-engine/tutorial/12-world-map.md`)。
+對應我們:三層共用同一套 `entt::registry` + `GlobalManager` 機制,只靠 `ZoneType` tag 與屬性區分。**一個 zone = 一個 `entt::registry`**,全部由 `GlobalManager` 管;root 永久存活、放全局實體,其餘 zone 按需載入。
 
 ### 4.2 規模現實:絕不全載
 
-World 200×200 → 最多 4 萬個 Region;再乘 R1²=225 → **最多約 900 萬個 Area**。顯然永遠不可能全部載入。
+預設 world_dim=200 時,World 200×200 → 最多 4 萬個 Region;再乘 R1²=225 → **最多約 900 萬個 Area**。顯然永遠不可能全部載入。
 現有不變量(`zone_key.h`:全局唯一定址、path 由 key 推、不存全域清單、記憶體只跟載入數成正比)就是為了撐這個規模而設,**方向正確**。
 
-### 4.3 兩層模型(Rimworld 教訓的對照)
+### 4.3 zone 的生命週期與持久化
 
-Rimworld 的 `outpost_archiving_strategy.md` 把「閒置地圖怎麼處理」攤開,結論是引擎傾向「**離開就拆、要用再重生成,人保留、場景丟棄**」,因為它**沒有官方的地圖快照/還原 API**,自序列化(路線 B)既肥又脆。
+- **一個 zone = 一個 `entt::registry`**,由 `GlobalManager` 持有(`loaded_` map,key 為 `ZoneKey`);root 永久存活。
+- 序列化:EnTT snapshot + cereal(`serialize/zone_io.h` save/load + `entt_cereal_archive.h`)把整個 registry 打包成位元組;`ZoneStore` 負責位元組↔儲存。
+- 預設後端 **`FolderZoneStore`**:**一 zone 一檔**——`dir_/<16 碼 hex key>.bin`,ROOT 特例為 `dir_/root.bin`;path 由 key 推導,不另存全域清單。`GlobalManager()` 無參數建構子預設用 `FolderZoneStore("zones")`,要換位置可注入自訂 `ZoneStore`。
+- **按需載入 / 卸載**:`load(key)` 從 store 反序列化(已載入則回傳既有);`unload(key)` 序列化回 store 並從記憶體移除;`create(key, parent)` 在 parent 底下建立新 zone 並植入 `ZoneMeta`。
+- **整局存檔 / 讀檔**:`save_all()` 把 root + 目前所有已載入的 zone 寫入 store(不卸除);`load_root()` 只載入 root,子 zone 留在 store 中按需 load。
 
-**我們的處境正好相反——我們自己造了那個 API**:EnTT snapshot + cereal(`serialize/zone_io.h` + `entt_cereal_archive.h` + `zone_store.h`)就是一套乾淨的整-registry 快照/還原容器。所以對 medps,Rimworld 不敢用的「路線 B(精準還原)」對我們是便宜安全的。據此分兩層:
+### 4.4 tick
 
-| 狀態 | 載體 | 用途 | 對應 Rimworld 路線 |
-|---|---|---|---|
-| **已載入** | 完整 `entt::registry` | 玩家當前所在 / 需精細模擬的少數 zone | — (在 `Game.Maps`) |
-| **已卸載但存檔** | 磁碟上的 zone blob(`zone_io`) | 離開過、之後可原貌還原 | 路線 B(我們做得起) |
-| **僅摘要** | 父 zone 內的 `ChildZoneSummary` stub | 上百萬個沒去過的 zone:跑廉價的聚合 off-screen 模擬,不載全圖 | 路線 C(數值抽象化) |
-
-→ `ChildZoneSummary` = Rimworld「把哨站濃縮成 `WorldObjectComp` 數值」的對應物。**已載入集合保持很小**(Rimworld 教訓:每張在清單裡的地圖都吃 tick;它上限 128 張),其餘靠摘要做聚合演進。
-
-### 4.4 tick 與 off-screen 模擬
-
-- Rimworld:每張載入地圖每 tick 都跑 → 成本。我們 `GlobalManager::tick` 目前對每個載入 zone 跑同一套 system。
-- 【建議】tick 依 `ZoneType` 分派(只有 World 是純回合/1 日;Region WeGo;Area 即時/JRPG),且**只 tick 已載入的少數**。
-- 未載入 zone 的演進 = 在父層用 `ChildZoneSummary` 做聚合 delta(對應 gamecore「微觀→宏觀 delta 寫入佇列」`pas/others/gamecore/plans/002:27`)。
+- `GlobalManager::tick()` 對**每個已載入的 zone**執行所有已註冊的 per-zone 系統(`add_zone_system` 依註冊順序);root 被排除(它放全局 entity,不是地圖角色)。
+- per-zone 系統型別為 `std::function<void(entt::registry&)>`。
+- 【開放】tick 依 `ZoneType` 分派(只有 World 是純回合/1 日;Region WeGo;Area 即時/JRPG)——之後再處理。
 
 ---
 
@@ -137,21 +135,21 @@ Rimworld 的一張 Map = **一組平行的稠密 2D 網格**(TerrainGrid / RoofG
 - **地格資料 = 稠密陣列,不要一格一 entity**。250×250 = 62500 格,做成 entity 太重。做成**掛在單例 entity 上的 component**:已實作 `AreaTerrain { tdarray<Tile> }`,`Tile{ uint16 terrain; uint8 flags }`(flags 快取可走 / 擋視線)。**不可放 `registry.ctx()`**——`zone_io` 用 snapshot 遍歷 component 存檔,ctx 不會被帶走。第一版只一張 terrain 網格;roof / fog / path 等平行網格之後按系統需要再加。這也正是當初保留 `tdarray` 的理由。
 - **離散 / 會動的物件(pawn、掉落物、建築)= registry 裡的 entity**(逐 entity 阻擋已實作 `Blocking{ blocks_move, blocks_sight }`)。
 - **Lister 不用自己造**:`registry.view<Building>()`、`view<Pawn>()` 本身就是 lister。Rimworld「別掃全圖、用 lister」在 EnTT 等於「用 view、別自己 iterate 全 entity」。
-- 同理 World / Region 層的地形也走稠密網格(World 200×200、Region 15×15),只是格上承載的語意不同(World 格=影響力場/地形;Region 格=戰術地形)。
+- 同理 World / Region 層的地形也走稠密網格(World world_dim²、Region 15×15),只是格上承載的語意不同(World 格=影響力場/地形;Region 格=戰術地形)。
 
 ---
 
-## 6. 與現有程式的落差 / 待改清單
+## 6. 與現有程式的對應 / 待改清單
 
-> 框架已落地(2026-05-27,`medp_test` 25/25 綠燈)。已完成標 [x];component / system 由使用者後續主導填。
+> 框架已落地;2026-05-30 精簡重構。已完成標 [x];component / system 由使用者後續主導填。
 
-- [x] `zone_key.h`:`ZoneType{World,Region,Area}`、`zlayer::{Underground=-1,Ground=0,Sky=+1}`、換算 helper(`world_key`/`region_key`/`area_key`/`parent_of`)、常數集中 `zone_scale::{WORLD_DIM,REGION_DIM,AREA_DIM,REGION_CHUNK,AREA_CHUNK}` + 溢位 `static_assert`。
-- [x] 路徑推導:zone/chunk 檔名由 key 的 16 進位推出(`ChunkedFolderZoneStore::chunk_path` / `FolderZoneStore::path`);type+z 已含在 key 內。
-- [x] 不變量測試:`zone_layers_and_parent`(Area↔Region 整除往返、同 z parent 鏈)、`chunk_key_grouping`;`WORLD_DIM·REGION_DIM < INT16_MAX` 由 `static_assert` 保證。
-- [x] **registry chunk(方案 B)**:`chunk_key.h`(`chunk_key_of`,Region N=5、Area N=1)+ `serialize/chunked_zone_store.h`(chunk 檔 = cereal `map<ZoneKey,blob>`,write-through);`global_manager` 預設 store 已換;測試 `chunked_store_packs_zones`(同 chunk 兩 zone 互不污染 + partial update + 打包成單檔)。
-- [x] **chunk 預取 + ES 式滾動視窗**:`ZoneStore::group_of`(回傳同 chunk 已存檔 keys)+ `GlobalManager::prefetch(key)`(暖整個 storage chunk)+ `stream_around(center, radius)`(以玩家所在 zone 為中心維持 (2r+1)² 同層視窗:載入磁碟上存在的、卸載滾出的;對應上古卷軸 `uGridsToLoad`,建議 Region radius≈2、Area=0)。測試 `prefetch_loads_chunk`、`stream_around_window`。仍是 per-zone registry、不合併,invariant 不變。
-- [ ] (後)`GlobalManager::tick` 依 ZoneType 分派;off-screen 聚合走 `ChildZoneSummary`。
-- [x] **Area 第一批 component**:`AreaTerrain`(`tdarray<Tile>` 單例 component,走 snapshot 存檔)、`Blocking`(逐 entity 阻擋);登錄 `all_components.h`、各有 round-trip 測試。(移除了示範用的 `Owner`;底層 `CrossZoneRef` 機制保留。)
+- [x] `zone_key.h`:`ZoneType{Invalid,World,Region,Area}`、`zlayer::{Underground=-1,Ground=0,Sky=+1}`、換算 helper(`world_key`/`region_key`/`area_key`/`parent_of`)、常數集中 `zone_scale::{WORLD_DIM_DEFAULT,WORLD_LAYERS_DEFAULT,REGION_DIM,AREA_DIM,MAX_WORLD_DIM,valid_world_dim}`。
+- [x] 路徑推導:zone 檔名由 key 的 16 進位推出(`FolderZoneStore::path`,ROOT→`root.bin`);type+z 已含在 key 內。
+- [x] `WorldConfig{world_dim_x,world_dim_y,world_dim_z}`:PER-SAVE 設定,以 ROOT singleton component 存檔;`GlobalManager::init_world(x,y,z)` 植入、`world_config()` 取用;`valid_world_dim` 把關 x/y 不溢位。
+- [x] zone 生命週期:`GlobalManager` 的 `create(key,parent)` / `load(key)` / `unload(key)` / `get(key)` + `save_all()` / `load_root()`;per-zone registry,path 由 key 推、不存全域清單。
+- [x] 序列化:EnTT snapshot + cereal(`serialize/zone_io.h`、`entt_cereal_archive.h`)+ `ZoneStore`(write/read/has/flush);唯一且預設後端 `FolderZoneStore`(一 zone 一檔)。component 型別清單單一來源 `all_components.h`:`AllComponents = type_list<ZoneMeta, Position, Velocity, AreaTerrain, Blocking, WorldConfig>`。
+- [x] **Area 地格 component**:`AreaTerrain`(`tdarray<Tile>` 單例 component,`Tile{terrain,flags}`,走 snapshot 存檔)、`Blocking{blocks_move,blocks_sight}`(逐 entity 阻擋);均登錄 `all_components.h`。
+- [ ] (後)`GlobalManager::tick` 依 ZoneType 分派。
 - [ ] (後)更多遊戲 component / system:actor 生命(部位傷害)/ 耐力 / 士氣、需求(馬斯洛)、AI、日程…由使用者主導,參 gamecore 004/005。
 - [ ] (後)roof / fog / path 等平行地格網格(按系統需要)。
 
@@ -159,14 +157,14 @@ Rimworld 的一張 Map = **一組平行的稠密 2D 網格**(TerrainGrid / RoofG
 
 ## 7. 已決(記錄)與仍開放
 
-**已決,待實作 / 後議:**
-- **registry 粒度 → 方案 B**(2026-05-27,詳見 `work/design/registry_chunking_investigation.md`):不合併 registry(方案 A 會撞 entity 命名空間、需重寫序列化路徑);改在 `ZoneStore` 層**合併檔案**(`ChunkedFolderZoneStore`)。Region chunk N=5、Area 1:1。已落地;streaming 平順靠 `prefetch` + ES 式 `stream_around`(已實作)。
-- **行動者跨 zone → C 案**:權威身份 + 世界座標住 root;載入的 zone 放本地分身、以 `CrossZoneRef` 連回 root;未載入軍隊靠 root / `ChildZoneSummary` 聚合模擬(≈ Rimworld WorldPawn / gamecore 影響力場)。細節留待 actor 設計階段。
+**已決:**
+- **registry 粒度 → 每 zone 一個 registry**:不合併 registry(合併會撞 entity 命名空間、需重寫序列化路徑)。持久化在 `ZoneStore` 層做,預設 `FolderZoneStore` 一 zone 一檔;按需 `load()` / `unload()`。
 
 **仍開放:**
-- **跨 z 連通**:地面↔地下↔天空怎麼接(用 `CrossZoneRef`;哪些格可通、單向?)。
+- **跨 z 連通**:地面↔地下↔天空怎麼接(哪些格可通、單向?)。
+- **行動者跨 zone**:跨 zone 的身份 / 移動機制(留待 actor 設計階段)。
 - **世界邊緣**:預設**有界**(大陸 + 周邊海洋,邊緣為海 / 不可越);要環形(toroidal)再議(gamecore `002:37`)。
-- **時間 / tick 模型**:tick 依 ZoneType 分派、off-screen 聚合演進——之後再處理(見 §4.4)。
+- **時間 / tick 模型**:tick 依 ZoneType 分派——之後再處理(見 §4.4)。
 - **存檔規模**:900 萬潛在 Area + 物件持久化的增量存檔 / 壓縮(gamecore `006:33`)。
 
 ---
