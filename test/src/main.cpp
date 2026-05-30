@@ -25,14 +25,14 @@ static bool contains(const std::vector<ZoneKey>& v, ZoneKey k) {
     return std::find(v.begin(), v.end(), k) != v.end();
 }
 
-// ---- helpers ----
+// ---- 輔助工具 ----
 
 static void pass(const char* name) { std::printf("  [PASS] %s\n", name); }
 static void fail(const char* name) { std::printf("  [FAIL] %s\n", name); }
 
 #define CHECK(name, expr) do { if (expr) pass(name); else { fail(name); return false; } } while(0)
 
-// ---- tests ----
+// ---- 測試 ----
 
 static bool test_zone_key_roundtrip() {
     auto key = make_zone_key(ZoneType{1}, -100, 200, -1);
@@ -55,7 +55,7 @@ static bool test_serialize_roundtrip() {
     src.emplace<CrossZoneRef>(e1, ZoneKey{42}, entt::entity{7});
 
     auto e2 = src.create();
-    // e2 has no CrossZoneRef
+    // e2 沒有 CrossZoneRef
 
     auto e3 = src.create();
     src.emplace<CrossZoneRef>(e3, ZONE_ROOT, entt::null);
@@ -66,7 +66,7 @@ static bool test_serialize_roundtrip() {
     entt::registry dst;
     zone_io::load(dst, ss);
 
-    // e1 should have CrossZoneRef with zone=42, local=7
+    // e1 應持有 CrossZoneRef，其 zone=42、local=7
     auto view = dst.view<CrossZoneRef>();
     int count = 0;
     bool e1_ok = false, e3_ok = false;
@@ -84,9 +84,9 @@ static bool test_serialize_roundtrip() {
 }
 
 static bool test_serialize_orphans_removed() {
-    // entities without any component-in-AllComponents are dropped by loader.orphans()
+    // 不持有任何 AllComponents 內 component 的 entity，會被 loader.orphans() 移除
     entt::registry src;
-    auto e_empty = src.create();        // no component, will be orphan after load
+    auto e_empty = src.create();        // 無 component，load 後會成為孤兒
     auto e_with  = src.create();
     src.emplace<CrossZoneRef>(e_with, ZoneKey{1}, entt::entity{2});
 
@@ -96,14 +96,14 @@ static bool test_serialize_orphans_removed() {
     entt::registry dst;
     zone_io::load(dst, ss);
 
-    // snapshot_loader preserves entity values; orphans() destroys e_empty
+    // snapshot_loader 會保留 entity 值；orphans() 則會銷毀 e_empty
     CHECK("orphan removed",  !dst.valid(e_empty));
     CHECK("non-orphan kept",  dst.valid(e_with));
     return true;
 }
 
 static bool test_zone_meta_placeholder_survives() {
-    // a zone whose only entity is a ZoneMeta placeholder must survive round-trip
+    // 一個唯一 entity 只是 ZoneMeta placeholder 的 zone，必須能在 round-trip 後存活
     entt::registry src;
     auto ph = src.create();
     src.emplace<ZoneMeta>(ph, ZoneKey{12345});
@@ -161,7 +161,7 @@ static bool test_resolve_loaded_zone() {
     CHECK("loaded reg",     res.reg == &zone);
     CHECK("loaded valid",   res.valid());
 
-    // stale entity in a loaded zone: reg present, but not valid
+    // 已載入 zone 中的失效 entity：reg 存在，但並非 valid
     CrossZoneRef stale{key, entt::entity{9999}};
     auto sres = gm.resolve(stale);
     CHECK("stale reg present", sres.reg == &zone);
@@ -176,7 +176,7 @@ static bool test_child_index_flat() {
 
     gm.create(a1, ZONE_ROOT);
     gm.create(a2, ZONE_ROOT);
-    gm.create(a1, ZONE_ROOT);   // idempotent: must not duplicate stub
+    gm.create(a1, ZONE_ROOT);   // 冪等：不可重複建立 stub
 
     auto kids = gm.children(ZONE_ROOT);
     CHECK("two children",  kids.size() == 2);
@@ -203,23 +203,23 @@ static bool test_child_index_hierarchy() {
 }
 
 static bool test_child_overview_without_loading() {
-    // overview a child that exists but is not loaded: parent's stub still lists it
+    // 概覽一個存在但未載入的 child：parent 的 stub 仍會列出它
     GlobalManager gm;
     auto province = make_zone_key(ZoneType{1}, 7, 0, 0);
     auto area     = make_zone_key(ZoneType{2}, 8, 0, 0);
     gm.create(province, ZONE_ROOT);
     gm.create(area, province);
 
-    // simulate area not being loaded by checking parent's index independently
+    // 透過獨立檢查 parent 的索引，模擬 area 尚未載入的情況
     auto kids = gm.children(province);
     CHECK("area listed", contains(kids, area));
-    // area registry exists here because create() loads it; the point is that
-    // children() reads ONLY the parent's stub, never the area registry.
+    // 此處 area registry 之所以存在，是因為 create() 會載入它；重點在於
+    // children() 只讀取 parent 的 stub，絕不會去讀 area registry。
     return true;
 }
 
 static bool test_child_summary_roundtrip() {
-    // a parent zone's child stubs must survive serialization
+    // parent zone 的 child stub 必須能在序列化後存活
     entt::registry parent;
     auto ph = parent.create();
     parent.emplace<ZoneMeta>(ph, ZoneKey{100}, ZONE_ROOT);
@@ -254,27 +254,59 @@ static bool test_save_load_root() {
 
     auto child = make_zone_key(ZoneType{1}, 1, 0, 0);
 
-    {   // session 1: build a game and checkpoint it
+    {   // session 1：建立一場遊戲並做存檔
         GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
         auto e = gm.root.create();
         gm.root.emplace<ZoneMeta>(e, ZONE_ROOT, ZONE_ROOT);
-        gm.create(child, ZONE_ROOT);   // registers a child stub in root
+        gm.create(child, ZONE_ROOT);   // 在 root 中註冊一個 child stub
         gm.save_all();
     }
 
     bool ok = true;
-    {   // session 2: reopen and verify root + its child index persisted
+    {   // session 2：重新開啟，驗證 root 與其 child 索引已持久化
         GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
         gm2.load_root();
 
         auto kids = gm2.children(ZONE_ROOT);
         if (!contains(kids, child)) ok = false;
-        // child zone is NOT loaded yet (streamed on demand)
+        // child zone 尚未載入（按需 streaming）
         if (gm2.get(child) != nullptr) ok = false;
     }
 
     std::filesystem::remove_all(dir);
     CHECK("root + child index persisted, child not auto-loaded", ok);
+    return true;
+}
+
+static bool test_world_config_persists() {
+    auto dir = std::filesystem::temp_directory_path() / "medps_test_worldcfg";
+    std::filesystem::remove_all(dir);
+
+    bool ok = true;
+    {   // 新遊戲：未設定的 config 會讀到預設值，接著選定 world size 並存檔
+        GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
+        if (gm.world_config().world_dim != zone_scale::WORLD_DIM_DEFAULT) ok = false;
+        gm.init_world(64);
+        if (gm.world_config().world_dim != 64) ok = false;   // 設定後立即可讀
+        gm.save_all();
+    }
+    {   // 重新開啟：world_dim 由 root 的 snapshot 還原（每份存檔各自固定、不可變）
+        GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
+        gm2.load_root();
+        if (gm2.world_config().world_dim != 64) ok = false;
+    }
+
+    std::filesystem::remove_all(dir);
+    CHECK("world_dim set at new-game persists in root snapshot", ok);
+    return true;
+}
+
+static bool test_world_dim_bounds() {
+    using namespace zone_scale;
+    CHECK("default valid",     valid_world_dim(WORLD_DIM_DEFAULT));
+    CHECK("zero invalid",     !valid_world_dim(0));
+    CHECK("max valid",         valid_world_dim(MAX_WORLD_DIM));
+    CHECK("over-max invalid", !valid_world_dim(MAX_WORLD_DIM + 1));
     return true;
 }
 
@@ -301,7 +333,7 @@ static bool test_tick_runs_per_loaded_zone() {
     GlobalManager gm;
     gm.add_zone_system(systems::movement);
 
-    // two loaded zones, each with a moving actor
+    // 兩個已載入的 zone，各有一個會移動的 actor
     auto& z1 = gm.create(make_zone_key(ZoneType{1}, 1, 0, 0), ZONE_ROOT);
     auto e1 = z1.create();
     z1.emplace<Position>(e1, 0, 0);
@@ -312,7 +344,7 @@ static bool test_tick_runs_per_loaded_zone() {
     z2.emplace<Position>(e2, 10, 10);
     z2.emplace<Velocity>(e2, -1, 0);
 
-    // an actor in root should NOT be ticked by per-zone systems
+    // root 中的 actor 不應被 per-zone system tick 到
     auto er = gm.root.create();
     gm.root.emplace<Position>(er, 100, 100);
     gm.root.emplace<Velocity>(er, 5, 5);
@@ -330,17 +362,17 @@ static bool test_tick_runs_per_loaded_zone() {
 }
 
 static bool test_tick_system_order() {
-    // systems run in registration order against the same zone
+    // 對同一個 zone，system 依註冊順序執行
     GlobalManager gm;
     auto& z = gm.create(make_zone_key(ZoneType{1}, 3, 0, 0), ZONE_ROOT);
     auto e = z.create();
     z.emplace<Position>(e, 0, 0);
 
     gm.add_zone_system([](entt::registry& r){
-        r.view<Position>().each([](Position& p){ p.x += 1; });   // first: +1
+        r.view<Position>().each([](Position& p){ p.x += 1; });   // 第一步：+1
     });
     gm.add_zone_system([](entt::registry& r){
-        r.view<Position>().each([](Position& p){ p.x *= 10; });  // then: *10
+        r.view<Position>().each([](Position& p){ p.x *= 10; });  // 接著：*10
     });
 
     gm.tick();
@@ -350,13 +382,13 @@ static bool test_tick_system_order() {
 
 static bool test_zone_layers_and_parent() {
     using namespace zone_scale;
-    // an Area built from world-tile (7,8) + region-local (3,4), underground layer
+    // 由 world-tile (7,8) + region-local (3,4) 構成的 Area，位於地下層
     auto a = area_key(7, 8, 3, 4, zlayer::Underground);
     CHECK("area type",  zone_key_type(a) == ZoneType::Area);
     CHECK("area gx",    zone_key_x(a) == 7 * REGION_DIM + 3);
     CHECK("area gy",    zone_key_y(a) == 8 * REGION_DIM + 4);
 
-    auto r = parent_of(a);                       // Area -> Region by integer division
+    auto r = parent_of(a);                       // Area -> Region，以整數除法換算
     CHECK("parent is region", zone_key_type(r) == ZoneType::Region);
     CHECK("region wx",        zone_key_x(r) == 7);
     CHECK("region wy",        zone_key_y(r) == 8);
@@ -371,12 +403,12 @@ static bool test_zone_layers_and_parent() {
 static bool test_chunk_key_grouping() {
     using namespace zone_scale;
     auto r_a = region_key(10, 10);
-    auto r_b = region_key(12, 11);   // same 5×5 chunk as r_a
-    auto r_c = region_key(20, 20);   // different chunk
+    auto r_b = region_key(12, 11);   // 與 r_a 同一個 5×5 chunk
+    auto r_c = region_key(20, 20);   // 不同 chunk
     CHECK("same chunk",   chunk_key_of(r_a) == chunk_key_of(r_b));
     CHECK("diff chunk",   chunk_key_of(r_a) != chunk_key_of(r_c));
     CHECK("chunk coord",  zone_key_x(chunk_key_of(r_a)) == 10 / REGION_CHUNK);
-    // Area is 1:1 -> its own chunk
+    // Area 是 1:1 -> 自成一個 chunk
     auto a = area_key(3, 4, 1, 2);
     CHECK("area self-chunk", chunk_key_of(a) == a);
     return true;
@@ -387,38 +419,38 @@ static bool test_chunked_store_packs_zones() {
     std::filesystem::remove_all(dir);
 
     auto r_a = region_key(10, 10);
-    auto r_b = region_key(12, 11);   // lands in the same chunk as r_a
-    bool ok = (chunk_key_of(r_a) == chunk_key_of(r_b));   // precondition of this test
+    auto r_b = region_key(12, 11);   // 落在與 r_a 相同的 chunk
+    bool ok = (chunk_key_of(r_a) == chunk_key_of(r_b));   // 本測試的前置條件
 
-    {   // write two zones that share a chunk
+    {   // 寫入兩個共用同一 chunk 的 zone
         ChunkedFolderZoneStore s{dir};
         s.write(r_a, "alpha");
         s.write(r_b, "bravo");
         s.flush();
     }
 
-    // both zones packed into ONE chunk file (the whole point of Plan B)
+    // 兩個 zone 都被打包進「同一個」chunk 檔（正是 Plan B 的核心目的）
     int chunk_files = 0;
     if (std::filesystem::exists(dir))
         for (auto& e : std::filesystem::directory_iterator(dir))
             if (e.path().extension() == ".chunk") ++chunk_files;
     if (chunk_files != 1) ok = false;
 
-    {   // reopen: each zone round-trips independently
+    {   // 重新開啟：每個 zone 都能各自獨立 round-trip
         ChunkedFolderZoneStore s2{dir};
         auto a = s2.read(r_a);
         auto b = s2.read(r_b);
         if (!a || *a != "alpha") ok = false;
         if (!b || *b != "bravo") ok = false;
-        s2.write(r_a, "ALPHA2");          // overwrite one zone in the chunk
+        s2.write(r_a, "ALPHA2");          // 覆寫 chunk 中的其中一個 zone
     }
-    {   // partial update must not clobber the other zone in the same chunk
+    {   // 局部更新不可破壞同一 chunk 中的另一個 zone
         ChunkedFolderZoneStore s3{dir};
         auto a = s3.read(r_a);
         auto b = s3.read(r_b);
         if (!a || *a != "ALPHA2") ok = false;
         if (!b || *b != "bravo")  ok = false;
-        if (s3.has(region_key(99, 99))) ok = false;   // absent zone -> not present
+        if (s3.has(region_key(99, 99))) ok = false;   // 不存在的 zone -> 應回報不存在
     }
 
     std::filesystem::remove_all(dir);
@@ -429,7 +461,7 @@ static bool test_chunked_store_packs_zones() {
 static bool test_blocking_roundtrip() {
     entt::registry src;
     auto e = src.create();
-    src.emplace<Blocking>(e, false, true);   // blocks_move=false, blocks_sight=true
+    src.emplace<Blocking>(e, false, true);   // blocks_move=false、blocks_sight=true
 
     std::stringstream ss;
     zone_io::save(src, ss);
@@ -473,13 +505,13 @@ static bool test_prefetch_loads_chunk() {
     std::filesystem::remove_all(dir);
 
     auto a   = region_key(10, 10);
-    auto b   = region_key(11, 10);   // same 5x5 chunk as a
-    auto c   = region_key(12, 11);   // same chunk
-    auto far = region_key(40, 40);   // different chunk
+    auto b   = region_key(11, 10);   // 與 a 同一個 5x5 chunk
+    auto c   = region_key(12, 11);   // 同一個 chunk
+    auto far = region_key(40, 40);   // 不同 chunk
     bool ok  = (chunk_key_of(a) == chunk_key_of(b)) && (chunk_key_of(a) == chunk_key_of(c))
             && (chunk_key_of(a) != chunk_key_of(far));
 
-    {   // session 1: create + persist four region zones
+    {   // session 1：建立並持久化四個 region zone
         GlobalManager gm{std::make_unique<ChunkedFolderZoneStore>(dir)};
         gm.create(a, ZONE_ROOT);
         gm.create(b, ZONE_ROOT);
@@ -487,13 +519,13 @@ static bool test_prefetch_loads_chunk() {
         gm.create(far, ZONE_ROOT);
         gm.save_all();
     }
-    {   // session 2: prefetch one zone -> its whole chunk comes in; far one does not
+    {   // session 2：prefetch 一個 zone -> 整個 chunk 都會被載入；遠處那個則不會
         GlobalManager gm2{std::make_unique<ChunkedFolderZoneStore>(dir)};
         gm2.prefetch(a);
         if (gm2.get(a)   == nullptr) ok = false;
-        if (gm2.get(b)   == nullptr) ok = false;   // chunk sibling, prefetched
+        if (gm2.get(b)   == nullptr) ok = false;   // 同 chunk 的手足，已被 prefetch
         if (gm2.get(c)   == nullptr) ok = false;
-        if (gm2.get(far) != nullptr) ok = false;   // different chunk, untouched
+        if (gm2.get(far) != nullptr) ok = false;   // 不同 chunk，未被觸及
     }
 
     std::filesystem::remove_all(dir);
@@ -505,7 +537,7 @@ static bool test_stream_around_window() {
     auto dir = std::filesystem::temp_directory_path() / "medps_test_stream";
     std::filesystem::remove_all(dir);
 
-    {   // a 5x5 patch of region zones at world-tiles 10..14, all persisted
+    {   // 位於 world-tiles 10..14 的 5x5 region zone 區塊，全部持久化
         GlobalManager gm{std::make_unique<ChunkedFolderZoneStore>(dir)};
         for (int x = 10; x <= 14; ++x)
             for (int y = 10; y <= 14; ++y)
@@ -516,18 +548,18 @@ static bool test_stream_around_window() {
     bool ok = true;
     {
         GlobalManager gm2{std::make_unique<ChunkedFolderZoneStore>(dir)};
-        gm2.stream_around(region_key(12, 12), 1);   // 3x3 window: x,y in 11..13
+        gm2.stream_around(region_key(12, 12), 1);   // 3x3 視窗：x、y 介於 11..13
 
-        if (gm2.get(region_key(12, 12)) == nullptr) ok = false;  // center
-        if (gm2.get(region_key(11, 11)) == nullptr) ok = false;  // corner of window
+        if (gm2.get(region_key(12, 12)) == nullptr) ok = false;  // 中心
+        if (gm2.get(region_key(11, 11)) == nullptr) ok = false;  // 視窗角落
         if (gm2.get(region_key(13, 13)) == nullptr) ok = false;
-        if (gm2.get(region_key(10, 12)) != nullptr) ok = false;  // outside (dx=-2)
-        if (gm2.get(region_key(14, 12)) != nullptr) ok = false;  // outside (dx=+2)
+        if (gm2.get(region_key(10, 12)) != nullptr) ok = false;  // 視窗外（dx=-2）
+        if (gm2.get(region_key(14, 12)) != nullptr) ok = false;  // 視窗外（dx=+2）
 
-        // move focus east -> window re-centers on (13,12), covering x 12..14
+        // 焦點向東移動 -> 視窗重新以 (13,12) 為中心，涵蓋 x 12..14
         gm2.stream_around(region_key(13, 12), 1);
-        if (gm2.get(region_key(14, 12)) == nullptr) ok = false;  // newly in window
-        if (gm2.get(region_key(11, 11)) != nullptr) ok = false;  // rolled out -> evicted
+        if (gm2.get(region_key(14, 12)) == nullptr) ok = false;  // 新進入視窗
+        if (gm2.get(region_key(11, 11)) != nullptr) ok = false;  // 滾出視窗 -> 被卸載
     }
 
     std::filesystem::remove_all(dir);
@@ -546,7 +578,7 @@ static bool test_serialize_empty() {
     return true;
 }
 
-// ---- runner ----
+// ---- 執行器 ----
 
 int main() {
     struct { const char* name; bool(*fn)(); } cases[] = {
@@ -564,6 +596,8 @@ int main() {
         { "child_summary_roundtrip",    test_child_summary_roundtrip    },
         { "zone_path_deterministic",    test_zone_path_deterministic    },
         { "save_load_root",             test_save_load_root             },
+        { "world_config_persists",      test_world_config_persists      },
+        { "world_dim_bounds",           test_world_dim_bounds           },
         { "position_roundtrip",         test_position_roundtrip         },
         { "tick_per_loaded_zone",       test_tick_runs_per_loaded_zone  },
         { "tick_system_order",          test_tick_system_order          },

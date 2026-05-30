@@ -4,6 +4,7 @@
 #include "components/zone_meta.h"
 #include "components/child_zone_summary.h"
 #include <sstream>
+#include <cassert>
 
 GlobalManager::GlobalManager()
     : GlobalManager(std::make_unique<ChunkedFolderZoneStore>("zones")) {}
@@ -33,7 +34,7 @@ entt::registry* GlobalManager::parent_registry(ZoneKey parent) {
 
 void GlobalManager::ensure_child_stub(entt::registry& parent, ZoneKey child) {
     for (auto e : parent.view<ChildZoneSummary>())
-        if (parent.get<ChildZoneSummary>(e).key == child) return;  // already indexed
+        if (parent.get<ChildZoneSummary>(e).key == child) return;  // 已建立索引
     auto stub = parent.create();
     parent.emplace<ChildZoneSummary>(stub, child);
 }
@@ -42,10 +43,10 @@ entt::registry& GlobalManager::create(ZoneKey key, ZoneKey parent) {
     auto [it, inserted] = loaded_.emplace(key, std::make_unique<entt::registry>());
     auto& reg = *it->second;
     if (inserted) {
-        auto e = reg.create();                       // placeholder; survives orphans()
+        auto e = reg.create();                       // placeholder；可在 orphans() 中存活
         reg.emplace<ZoneMeta>(e, key, parent);
     }
-    if (auto* preg = parent_registry(parent))        // index into parent if it's loaded
+    if (auto* preg = parent_registry(parent))        // 若父層已載入，建立索引到父層
         ensure_child_stub(*preg, key);
     return reg;
 }
@@ -70,7 +71,7 @@ void GlobalManager::unload(ZoneKey key) {
 
 void GlobalManager::prefetch(ZoneKey key) {
     for (ZoneKey k : store_->group_of(key))
-        load(k);                       // idempotent: skips already-loaded
+        load(k);                       // 冪等：略過已載入的
 }
 
 void GlobalManager::stream_around(ZoneKey center, int radius) {
@@ -79,8 +80,8 @@ void GlobalManager::stream_around(ZoneKey center, int radius) {
     const int16_t  cx = zone_key_x(center);
     const int16_t  cy = zone_key_y(center);
 
-    // load every persisted zone inside the window (skip off-world negatives;
-    // a zone not on disk is simply absent -- generation-on-demand is game logic)
+    // 載入視窗內每一個已持久化的 zone（略過世界外的負座標；
+    // 磁碟上不存在的 zone 就單純視為不存在 -- 按需生成屬於遊戲邏輯）
     for (int dy = -radius; dy <= radius; ++dy)
         for (int dx = -radius; dx <= radius; ++dx) {
             int nx = cx + dx, ny = cy + dy;
@@ -90,7 +91,7 @@ void GlobalManager::stream_around(ZoneKey center, int radius) {
             if (store_->has(nk)) load(nk);
         }
 
-    // evict loaded same-layer zones that fell outside the window
+    // 卸除落到視窗外的同層已載入 zone
     std::vector<ZoneKey> victims;
     for (auto& [k, reg] : loaded_) {
         if (zone_key_type(k) != t || zone_key_z(k) != z) continue;
@@ -121,6 +122,22 @@ void GlobalManager::load_root() {
         std::istringstream iss{*bytes};
         zone_io::load(root, iss);
     }
+}
+
+WorldConfig& GlobalManager::init_world(int16_t world_dim) {
+    assert(zone_scale::valid_world_dim(world_dim)
+           && "world_dim overflows the 16-bit ZoneKey x/y tile grid");
+    auto v = root.view<WorldConfig>();
+    entt::entity e = v.empty() ? root.create() : v.front();
+    auto& cfg = root.get_or_emplace<WorldConfig>(e);
+    cfg.world_dim = world_dim;
+    return cfg;
+}
+
+WorldConfig GlobalManager::world_config() const {
+    auto v = root.view<const WorldConfig>();
+    if (v.empty()) return WorldConfig{};
+    return v.get<const WorldConfig>(v.front());
 }
 
 void GlobalManager::add_zone_system(ZoneSystem sys) {

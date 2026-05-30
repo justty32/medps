@@ -16,16 +16,16 @@ LET_CONCEPT_BE_CHECKABLE_V(is_coor);
 template<typename T>
 class tdarray {
 private:
-	template<is_coor T>
-	inline constexpr int bx(T t) {
-		if constexpr (std::is_same_v<T, std::pair<int, int>>) return t.first;
-		else if constexpr (std::is_same_v<T, std::tuple<int, int>>) return std::get<0>(t);
+	template<is_coor TC>
+	inline constexpr int bx(TC t) {
+		if constexpr (std::is_same_v<TC, std::pair<int, int>>) return t.first;
+		else if constexpr (std::is_same_v<TC, std::tuple<int, int>>) return std::get<0>(t);
 		else return t.x;
 	}
-	template<is_coor T>
-	inline constexpr int by(T t) {
-		if constexpr (std::is_same_v<T, std::pair<int, int>>) return t.second;
-		else if constexpr (std::is_same_v<T, std::tuple<int, int>>) return std::get<1>(t);
+	template<is_coor TC>
+	inline constexpr int by(TC t) {
+		if constexpr (std::is_same_v<TC, std::pair<int, int>>) return t.second;
+		else if constexpr (std::is_same_v<TC, std::tuple<int, int>>) return std::get<1>(t);
 		else return t.y;
 	}
 	std::vector<T> vec;
@@ -54,7 +54,7 @@ public:
 		if (x * sy + y >= vec.size()) return true;
 		return false;
 	}
-	template<is_coor T> inline bool out(T c){
+	template<is_coor TC> inline bool out(TC c){
 		if (bx(c) < 0 || bx(c) >= sx
 			|| by(c) < 0 || by(c) >= sy) return true;
 		if (bx(c) * sy + by(c) >= vec.size()) return true;
@@ -164,9 +164,9 @@ public:
 		}
 	}
 
-	template<typename T>
-	auto operator [](T c) {
-		if constexpr (is_coor_v<T>) return getref(c);
+	template<typename TC>
+	auto operator [](TC c) {
+		if constexpr (is_coor_v<TC>) return getref(c);
 		else return &(vec[c * sy]);
 	}
 };

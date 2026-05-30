@@ -1,48 +1,56 @@
 #pragma once
 #include <cstdint>
 
-// ---- map layers (ZoneType) -----------------------------------------------
-// Strict hierarchy: World ⊃ Region ⊃ Area. The type doubles as tree depth, so
-// a key's parent TYPE is implied. 0 is reserved for ZONE_ROOT (the global,
-// non-map layer that holds factions / gods / named actors); real types from 1.
+// ---- 地圖分層 (ZoneType) -------------------------------------------------
+// 嚴格階層：World ⊃ Region ⊃ Area。type 同時也代表樹的深度，所以一個 key 的
+// 父層 TYPE 是隱含的。0 保留給 ZONE_ROOT（非地圖的全局層，存放陣營 / 神祇 /
+// 具名角色）；真正的 type 從 1 開始。
 enum class ZoneType : uint16_t {
     Invalid = 0,   // == ZONE_ROOT
-    World   = 1,   // 世界層  Civ-like, ~km/tile, 1 turn ≈ 1 day
-    Region  = 2,   // 戰略層  grand-strategy / Fire-Emblem, tens of m/tile
-    Area    = 3,   // 區域層  Rimworld / ToME4 / JRPG, ~m/tile
+    World   = 1,   // 世界層  類 Civ，約 km/格，1 回合 ≈ 1 天
+    Region  = 2,   // 戰略層  大戰略 / Fire-Emblem，數十 m/格
+    Area    = 3,   // 區域層  Rimworld / ToME4 / JRPG，約 m/格
 };
 
-// ---- vertical layer (the z field) ----------------------------------------
-// All three map types stack the same three vertical layers; z is centred on
-// ground (down negative, up positive). A distinct z is a distinct zone.
+// ---- 垂直分層 (z 欄位) ---------------------------------------------------
+// 三種地圖 type 都疊上同樣的三個垂直層；z 以地面為中心（往下為負，往上為正）。
+// 不同的 z 就是不同的 zone。
 namespace zlayer {
     inline constexpr int16_t Underground = -1;
     inline constexpr int16_t Ground      =  0;
     inline constexpr int16_t Sky         = +1;
 }
 
-// ---- scale constants (tunable, single source of truth) --------------------
-// All estimates ("or larger" / "around"); coordinate math must reference these
-// constants, never hard-code the numbers.
+// ---- 尺度常數（單一來源） -------------------------------------------------
+// 全部都是估計值（「或更大」/「大約」）；座標運算必須引用這些常數，絕不要把
+// 數字寫死。world_dim 是唯一的 PER-SAVE 執行期設定（存在 ROOT 上的
+// components/world_config.h）；region/area/chunk 則是常數。
 namespace zone_scale {
-    inline constexpr int16_t WORLD_DIM  = 200;  // world map = WORLD_DIM² world-tiles (continent + ocean)
-    inline constexpr int16_t REGION_DIM = 15;   // 1 world-tile  → REGION_DIM²  region-tiles
-    inline constexpr int16_t AREA_DIM   = 250;  // 1 region-tile → AREA_DIM²    area-tiles
+    inline constexpr int16_t WORLD_DIM_DEFAULT = 200; // 預設世界地圖邊長（world-格）；見 WorldConfig
+    inline constexpr int16_t REGION_DIM = 15;   // 1 個 world-格  → REGION_DIM²  個 region-格
+    inline constexpr int16_t AREA_DIM   = 250;  // 1 個 region-格 → AREA_DIM²    個 area-格
 
-    // chunk = the storage/file unit: how many logical zones per chunk side.
-    inline constexpr int16_t REGION_CHUNK = 5;  // 5×5 regions share one chunk file (Plan B)
-    inline constexpr int16_t AREA_CHUNK   = 1;  // areas stay 1:1 (one area is already huge)
+    // chunk = 儲存/檔案單位：每個 chunk 邊長包含幾個邏輯 zone。
+    inline constexpr int16_t REGION_CHUNK = 5;  // 5×5 個 region 共用一個 chunk 檔（Plan B）
+    inline constexpr int16_t AREA_CHUNK   = 1;  // area 維持 1:1（單一 area 本身已經很龐大）
 
-    // an Area's global region-tile coord = world*REGION_DIM + local; keep it in int16.
-    static_assert(WORLD_DIM * REGION_DIM < 32767,
-                  "world*region tile grid overflows the 16-bit ZoneKey x/y field");
+    // 一個 Area 的全局 region-格座標 = world*REGION_DIM + local；最大值
+    //（= world_dim*REGION_DIM - 1）必須塞得進 16 位元的 ZoneKey x/y 欄位。由於
+    // world_dim 現在是執行期決定的，這是執行期的前置條件（設定 WorldConfig 時
+    // 驗證），而非 static_assert。
+    inline constexpr int16_t MAX_WORLD_DIM = 32766 / REGION_DIM;   // REGION_DIM=15 時為 2184
+    inline constexpr bool valid_world_dim(int wd) {
+        return wd > 0 && wd * REGION_DIM < 32767;
+    }
+    static_assert(valid_world_dim(WORLD_DIM_DEFAULT),
+                  "default world_dim overflows the 16-bit ZoneKey x/y field");
 }
 
-// ---- ZoneKey packing ------------------------------------------------------
+// ---- ZoneKey 打包 ---------------------------------------------------------
 using ZoneKey = uint64_t;
 constexpr ZoneKey ZONE_ROOT = 0;   // = make_zone_key(ZoneType::Invalid, 0, 0, 0)
 
-// bits 63-48: ZoneType (16) | 47-32: x (16) | 31-16: y (16) | 15-0: z (16)
+// 位元 63-48: ZoneType (16) | 47-32: x (16) | 31-16: y (16) | 15-0: z (16)
 inline ZoneKey make_zone_key(ZoneType type, int16_t x, int16_t y, int16_t z) {
     return (static_cast<uint64_t>(type)                        << 48)
          | (static_cast<uint64_t>(static_cast<uint16_t>(x))   << 32)
@@ -55,12 +63,12 @@ inline int16_t  zone_key_x   (ZoneKey k) { return static_cast<int16_t>(k >> 32);
 inline int16_t  zone_key_y   (ZoneKey k) { return static_cast<int16_t>(k >> 16); }
 inline int16_t  zone_key_z   (ZoneKey k) { return static_cast<int16_t>(k);       }
 
-// ---- coordinate conversions / hierarchy ----------------------------------
-// A zone's (x,y) = its coordinate in the PARENT layer's GLOBAL tile grid:
-//   World : single map per z, at (0,0).
-//   Region: the world-tile it expands,        x,y ∈ [0, WORLD_DIM).
-//   Area  : the GLOBAL region-tile it expands, x,y ∈ [0, WORLD_DIM*REGION_DIM).
-// Parent is recovered by integer division; z is preserved up the chain.
+// ---- 座標換算 / 階層 ------------------------------------------------------
+// 一個 zone 的 (x,y) = 它在父層 GLOBAL 格網中的座標：
+//   World : 每個 z 一張地圖，位於 (0,0)。
+//   Region: 它所展開的那個 world-格，        x,y ∈ [0, world_dim)。
+//   Area  : 它所展開的那個 GLOBAL region-格，x,y ∈ [0, world_dim*REGION_DIM)。
+// 父層用整數除法回推；z 沿著鏈往上保持不變。
 
 inline ZoneKey world_key(int16_t z = zlayer::Ground) {
     return make_zone_key(ZoneType::World, 0, 0, z);
@@ -70,7 +78,7 @@ inline ZoneKey region_key(int16_t world_x, int16_t world_y, int16_t z = zlayer::
     return make_zone_key(ZoneType::Region, world_x, world_y, z);
 }
 
-// build an Area key from its parent world-tile + region-local offset.
+// 由父層 world-格 + region-local 偏移量建構出一個 Area key。
 inline ZoneKey area_key(int16_t world_x, int16_t world_y,
                         int16_t region_local_x, int16_t region_local_y,
                         int16_t z = zlayer::Ground) {
@@ -80,7 +88,7 @@ inline ZoneKey area_key(int16_t world_x, int16_t world_y,
         z);
 }
 
-// the immediate parent zone of `k` (ZONE_ROOT for World and for root itself).
+// `k` 的直接父 zone（World 與 root 本身都回傳 ZONE_ROOT）。
 inline ZoneKey parent_of(ZoneKey k) {
     if (k == ZONE_ROOT) return ZONE_ROOT;
     const int16_t z = zone_key_z(k);
