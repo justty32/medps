@@ -5,6 +5,7 @@
 // 嚴格階層：World ⊃ Region ⊃ Area。type 同時也代表樹的深度，所以一個 key 的
 // 父層 TYPE 是隱含的。0 保留給 ZONE_ROOT（非地圖的全局層，存放陣營 / 神祇 /
 // 具名角色）；真正的 type 從 1 開始。
+// TODO: 要掛在ruleset底下
 enum class ZoneType : uint16_t {
     Invalid = 0,   // == ZONE_ROOT
     World   = 1,   // 世界層  類 Civ，約 km/格，1 回合 ≈ 1 天
@@ -15,6 +16,7 @@ enum class ZoneType : uint16_t {
 // ---- 垂直分層 (z 欄位) ---------------------------------------------------
 // 三種地圖 type 都疊上同樣的三個垂直層；z 以地面為中心（往下為負，往上為正）。
 // 不同的 z 就是不同的 zone。
+// TODO: 要掛在ruleset底下
 namespace zlayer {
     inline constexpr int16_t Underground = -1;
     inline constexpr int16_t Ground      =  0;
@@ -24,26 +26,23 @@ namespace zlayer {
 // ---- 尺度常數（單一來源） -------------------------------------------------
 // 全部都是估計值（「或更大」/「大約」）；座標運算必須引用這些常數，絕不要把
 // 數字寫死。world_dim 是唯一的 PER-SAVE 執行期設定（存在 ROOT 上的
-// components/world_config.h）；region/area/chunk 則是常數。
+// components/world_config.h）；region/area 則是常數。
+// TODO: 要掛在ruleset底下，各種dim應該要分xyz，而不是dim^2, dim^3
 namespace zone_scale {
     inline constexpr int16_t WORLD_DIM_DEFAULT = 200; // 預設世界地圖邊長（world-格）；見 WorldConfig
+    // 預設垂直層數：Underground / Ground / Sky（z = −1 / 0 / 1）。日後可擴充（冥界往下、
+    // 天界往上）；z 以地面為中心，層數即 zlayer 的涵蓋範圍，見 WorldConfig::world_dim_z。
+    inline constexpr int16_t WORLD_LAYERS_DEFAULT = 3;
     inline constexpr int16_t REGION_DIM = 15;   // 1 個 world-格  → REGION_DIM²  個 region-格
     inline constexpr int16_t AREA_DIM   = 250;  // 1 個 region-格 → AREA_DIM²    個 area-格
 
-    // chunk = 儲存/檔案單位：每個 chunk 邊長包含幾個邏輯 zone。
-    inline constexpr int16_t REGION_CHUNK = 5;  // 5×5 個 region 共用一個 chunk 檔（Plan B）
-    inline constexpr int16_t AREA_CHUNK   = 1;  // area 維持 1:1（單一 area 本身已經很龐大）
-
     // 一個 Area 的全局 region-格座標 = world*REGION_DIM + local；最大值
     //（= world_dim*REGION_DIM - 1）必須塞得進 16 位元的 ZoneKey x/y 欄位。由於
-    // world_dim 現在是執行期決定的，這是執行期的前置條件（設定 WorldConfig 時
-    // 驗證），而非 static_assert。
+    // TODO:這個要寫死，之後在ruleset載入時檢查
     inline constexpr int16_t MAX_WORLD_DIM = 32766 / REGION_DIM;   // REGION_DIM=15 時為 2184
     inline constexpr bool valid_world_dim(int wd) {
         return wd > 0 && wd * REGION_DIM < 32767;
     }
-    static_assert(valid_world_dim(WORLD_DIM_DEFAULT),
-                  "default world_dim overflows the 16-bit ZoneKey x/y field");
 }
 
 // ---- ZoneKey 打包 ---------------------------------------------------------

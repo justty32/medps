@@ -1,13 +1,11 @@
 #include "global_manager.h"
 #include "serialize/zone_io.h"
-#include "serialize/chunked_zone_store.h"
 #include "components/zone_meta.h"
-#include "components/child_zone_summary.h"
 #include <sstream>
 #include <cassert>
 
 GlobalManager::GlobalManager()
-    : GlobalManager(std::make_unique<ChunkedFolderZoneStore>("zones")) {}
+    : GlobalManager(std::make_unique<FolderZoneStore>("zones")) {}
 
 GlobalManager::GlobalManager(std::unique_ptr<ZoneStore> store)
     : store_(std::move(store)) {}
@@ -17,26 +15,10 @@ entt::registry* GlobalManager::get(ZoneKey key) {
     return (it != loaded_.end()) ? it->second.get() : nullptr;
 }
 
-ZoneResolution GlobalManager::resolve(const CrossZoneRef& ref) {
-    entt::registry* reg = (ref.zone == ZONE_ROOT) ? &root : get(ref.zone);
-    return ZoneResolution{ reg, ref.local_entity };
-}
-
 void GlobalManager::write_zone(ZoneKey key, entt::registry& reg) {
     std::ostringstream oss;
     zone_io::save(reg, oss);
     store_->write(key, oss.str());
-}
-
-entt::registry* GlobalManager::parent_registry(ZoneKey parent) {
-    return (parent == ZONE_ROOT) ? &root : get(parent);
-}
-
-void GlobalManager::ensure_child_stub(entt::registry& parent, ZoneKey child) {
-    for (auto e : parent.view<ChildZoneSummary>())
-        if (parent.get<ChildZoneSummary>(e).key == child) return;  // 已建立索引
-    auto stub = parent.create();
-    parent.emplace<ChildZoneSummary>(stub, child);
 }
 
 entt::registry& GlobalManager::create(ZoneKey key, ZoneKey parent) {
@@ -46,8 +28,6 @@ entt::registry& GlobalManager::create(ZoneKey key, ZoneKey parent) {
         auto e = reg.create();                       // placeholder；可在 orphans() 中存活
         reg.emplace<ZoneMeta>(e, key, parent);
     }
-    if (auto* preg = parent_registry(parent))        // 若父層已載入，建立索引到父層
-        ensure_child_stub(*preg, key);
     return reg;
 }
 
@@ -69,47 +49,6 @@ void GlobalManager::unload(ZoneKey key) {
     loaded_.erase(it);
 }
 
-void GlobalManager::prefetch(ZoneKey key) {
-    for (ZoneKey k : store_->group_of(key))
-        load(k);                       // 冪等：略過已載入的
-}
-
-void GlobalManager::stream_around(ZoneKey center, int radius) {
-    const ZoneType t  = zone_key_type(center);
-    const int16_t  z  = zone_key_z(center);
-    const int16_t  cx = zone_key_x(center);
-    const int16_t  cy = zone_key_y(center);
-
-    // 載入視窗內每一個已持久化的 zone（略過世界外的負座標；
-    // 磁碟上不存在的 zone 就單純視為不存在 -- 按需生成屬於遊戲邏輯）
-    for (int dy = -radius; dy <= radius; ++dy)
-        for (int dx = -radius; dx <= radius; ++dx) {
-            int nx = cx + dx, ny = cy + dy;
-            if (nx < 0 || ny < 0) continue;
-            ZoneKey nk = make_zone_key(t, static_cast<int16_t>(nx),
-                                          static_cast<int16_t>(ny), z);
-            if (store_->has(nk)) load(nk);
-        }
-
-    // 卸除落到視窗外的同層已載入 zone
-    std::vector<ZoneKey> victims;
-    for (auto& [k, reg] : loaded_) {
-        if (zone_key_type(k) != t || zone_key_z(k) != z) continue;
-        int dx = zone_key_x(k) - cx, dy = zone_key_y(k) - cy;
-        if (dx < -radius || dx > radius || dy < -radius || dy > radius)
-            victims.push_back(k);
-    }
-    for (ZoneKey k : victims) unload(k);
-}
-
-std::vector<ZoneKey> GlobalManager::children(ZoneKey parent) {
-    std::vector<ZoneKey> out;
-    if (auto* preg = parent_registry(parent))
-        for (auto e : preg->view<ChildZoneSummary>())
-            out.push_back(preg->get<ChildZoneSummary>(e).key);
-    return out;
-}
-
 void GlobalManager::save_all() {
     write_zone(ZONE_ROOT, root);
     for (auto& [key, reg] : loaded_)
@@ -124,13 +63,17 @@ void GlobalManager::load_root() {
     }
 }
 
-WorldConfig& GlobalManager::init_world(int16_t world_dim) {
-    assert(zone_scale::valid_world_dim(world_dim)
+WorldConfig& GlobalManager::init_world(int16_t world_dim_x, int16_t world_dim_y,
+                                       int16_t world_dim_z) {
+    assert(zone_scale::valid_world_dim(world_dim_x)
+           && zone_scale::valid_world_dim(world_dim_y)
            && "world_dim overflows the 16-bit ZoneKey x/y tile grid");
     auto v = root.view<WorldConfig>();
     entt::entity e = v.empty() ? root.create() : v.front();
     auto& cfg = root.get_or_emplace<WorldConfig>(e);
-    cfg.world_dim = world_dim;
+    cfg.world_dim_x = world_dim_x;
+    cfg.world_dim_y = world_dim_y;
+    cfg.world_dim_z = world_dim_z;
     return cfg;
 }
 

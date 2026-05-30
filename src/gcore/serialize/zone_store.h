@@ -22,22 +22,18 @@ struct ZoneStore {
     // 將待寫入的資料提交至持久化儲存。對 folder 後端而言是 no-op；
     // 對單一檔案 / DB 後端則是真正的 commit 點。
     virtual void flush() {}
-
-    // 與 `key` 儲存在同一個 storage group（chunk / pack page）的所有 key，
-    // 若 `key` 存在則一併包含。動到其中一個會讓其餘的載入成本很低，因此
-    // 呼叫端可以一次 prefetch 整個 group。預設後端每個單位只存一個
-    // zone，所以當 `key` 存在時這就只是 {key}。
-    virtual std::vector<ZoneKey> group_of(ZoneKey key) {
-        if (has(key)) return { key };
-        return {};
-    }
 };
 
 // 在一個目錄下每個 zone 一個檔案（原本的行為）。
 class FolderZoneStore : public ZoneStore {
 public:
+    // dir 即所有 zone 檔的根資料夾，可任意指定（相對 / 絕對 / 多層皆可）；
+    // 它就是檔名的 folder prefix。前端載入存檔時把該局存檔的資料夾路徑傳進來即可。
+    // 注意：GlobalManager() 無參數建構子內建用 FolderZoneStore("zones")（相對於工作
+    // 目錄）只是個方便的預設；要換位置就走 GlobalManager(unique_ptr<ZoneStore>) 注入。
     explicit FolderZoneStore(std::filesystem::path dir) : dir_(std::move(dir)) {}
 
+    // key → 檔案路徑：dir_/<16 碼 hex key>.bin；ZONE_ROOT 特例為 dir_/root.bin。
     std::filesystem::path path(ZoneKey key) const {
         if (key == ZONE_ROOT) return dir_ / "root.bin";
         char buf[17];

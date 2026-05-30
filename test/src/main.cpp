@@ -1,9 +1,5 @@
 #include <gcore/zone_key.h>
-#include <gcore/chunk_key.h>
-#include <gcore/serialize/chunked_zone_store.h>
-#include <gcore/components/cross_zone_ref.h>
 #include <gcore/components/zone_meta.h>
-#include <gcore/components/child_zone_summary.h>
 #include <gcore/components/position.h>
 #include <gcore/components/velocity.h>
 #include <gcore/components/area_terrain.h>
@@ -16,14 +12,9 @@
 #include <cassert>
 #include <sstream>
 #include <cstdio>
-#include <algorithm>
 #include <vector>
 #include <filesystem>
 #include <memory>
-
-static bool contains(const std::vector<ZoneKey>& v, ZoneKey k) {
-    return std::find(v.begin(), v.end(), k) != v.end();
-}
 
 // ---- 輔助工具 ----
 
@@ -52,13 +43,13 @@ static bool test_serialize_roundtrip() {
     entt::registry src;
 
     auto e1 = src.create();
-    src.emplace<CrossZoneRef>(e1, ZoneKey{42}, entt::entity{7});
+    src.emplace<Position>(e1, 42, 7);
 
     auto e2 = src.create();
-    // e2 沒有 CrossZoneRef
+    // e2 沒有 Position
 
     auto e3 = src.create();
-    src.emplace<CrossZoneRef>(e3, ZONE_ROOT, entt::null);
+    src.emplace<Position>(e3, 0, 0);
 
     std::stringstream ss;
     zone_io::save(src, ss);
@@ -66,14 +57,14 @@ static bool test_serialize_roundtrip() {
     entt::registry dst;
     zone_io::load(dst, ss);
 
-    // e1 應持有 CrossZoneRef，其 zone=42、local=7
-    auto view = dst.view<CrossZoneRef>();
+    // e1 應持有 Position{42, 7}
+    auto view = dst.view<Position>();
     int count = 0;
     bool e1_ok = false, e3_ok = false;
     for (auto e : view) {
-        auto& ref = view.get<CrossZoneRef>(e);
-        if (ref.zone == ZoneKey{42} && ref.local_entity == entt::entity{7}) e1_ok = true;
-        if (ref.zone == ZONE_ROOT   && ref.local_entity == entt::null)      e3_ok = true;
+        auto& p = view.get<Position>(e);
+        if (p.x == 42 && p.y == 7) e1_ok = true;
+        if (p.x == 0  && p.y == 0) e3_ok = true;
         ++count;
     }
 
@@ -88,7 +79,7 @@ static bool test_serialize_orphans_removed() {
     entt::registry src;
     auto e_empty = src.create();        // 無 component，load 後會成為孤兒
     auto e_with  = src.create();
-    src.emplace<CrossZoneRef>(e_with, ZoneKey{1}, entt::entity{2});
+    src.emplace<Position>(e_with, 1, 2);
 
     std::stringstream ss;
     zone_io::save(src, ss);
@@ -124,121 +115,6 @@ static bool test_zone_meta_placeholder_survives() {
     return true;
 }
 
-static bool test_resolve_root() {
-    GlobalManager gm;
-    auto e = gm.root.create();
-
-    CrossZoneRef ref{ZONE_ROOT, e};
-    auto res = gm.resolve(ref);
-
-    CHECK("root reg",    res.reg == &gm.root);
-    CHECK("root entity", res.entity == e);
-    CHECK("root valid",  res.valid());
-    return true;
-}
-
-static bool test_resolve_unloaded_zone() {
-    GlobalManager gm;
-    CrossZoneRef ref{make_zone_key(ZoneType{1}, 5, 6, 0), entt::entity{0}};
-    auto res = gm.resolve(ref);
-
-    CHECK("unloaded reg null", res.reg == nullptr);
-    CHECK("unloaded invalid",  !res.valid());
-    return true;
-}
-
-static bool test_resolve_loaded_zone() {
-    GlobalManager gm;
-    auto key = make_zone_key(ZoneType{1}, 5, 6, 0);
-    auto& zone = gm.create(key, ZONE_ROOT);
-
-    auto e = zone.create();
-    zone.emplace<ZoneMeta>(e, key);
-
-    CrossZoneRef ref{key, e};
-    auto res = gm.resolve(ref);
-
-    CHECK("loaded reg",     res.reg == &zone);
-    CHECK("loaded valid",   res.valid());
-
-    // 已載入 zone 中的失效 entity：reg 存在，但並非 valid
-    CrossZoneRef stale{key, entt::entity{9999}};
-    auto sres = gm.resolve(stale);
-    CHECK("stale reg present", sres.reg == &zone);
-    CHECK("stale not valid",   !sres.valid());
-    return true;
-}
-
-static bool test_child_index_flat() {
-    GlobalManager gm;
-    auto a1 = make_zone_key(ZoneType{1}, 1, 0, 0);
-    auto a2 = make_zone_key(ZoneType{1}, 2, 0, 0);
-
-    gm.create(a1, ZONE_ROOT);
-    gm.create(a2, ZONE_ROOT);
-    gm.create(a1, ZONE_ROOT);   // 冪等：不可重複建立 stub
-
-    auto kids = gm.children(ZONE_ROOT);
-    CHECK("two children",  kids.size() == 2);
-    CHECK("has a1",        contains(kids, a1));
-    CHECK("has a2",        contains(kids, a2));
-    return true;
-}
-
-static bool test_child_index_hierarchy() {
-    GlobalManager gm;
-    auto province = make_zone_key(ZoneType{1}, 0, 0, 0);
-    auto area     = make_zone_key(ZoneType{2}, 3, 4, 0);
-
-    gm.create(province, ZONE_ROOT);
-    gm.create(area, province);
-
-    auto root_kids     = gm.children(ZONE_ROOT);
-    auto province_kids = gm.children(province);
-
-    CHECK("root has province",     contains(root_kids, province));
-    CHECK("province has area",     contains(province_kids, area));
-    CHECK("area not under root",  !contains(root_kids, area));
-    return true;
-}
-
-static bool test_child_overview_without_loading() {
-    // 概覽一個存在但未載入的 child：parent 的 stub 仍會列出它
-    GlobalManager gm;
-    auto province = make_zone_key(ZoneType{1}, 7, 0, 0);
-    auto area     = make_zone_key(ZoneType{2}, 8, 0, 0);
-    gm.create(province, ZONE_ROOT);
-    gm.create(area, province);
-
-    // 透過獨立檢查 parent 的索引，模擬 area 尚未載入的情況
-    auto kids = gm.children(province);
-    CHECK("area listed", contains(kids, area));
-    // 此處 area registry 之所以存在，是因為 create() 會載入它；重點在於
-    // children() 只讀取 parent 的 stub，絕不會去讀 area registry。
-    return true;
-}
-
-static bool test_child_summary_roundtrip() {
-    // parent zone 的 child stub 必須能在序列化後存活
-    entt::registry parent;
-    auto ph = parent.create();
-    parent.emplace<ZoneMeta>(ph, ZoneKey{100}, ZONE_ROOT);
-    auto stub = parent.create();
-    parent.emplace<ChildZoneSummary>(stub, ZoneKey{200});
-
-    std::stringstream ss;
-    zone_io::save(parent, ss);
-
-    entt::registry dst;
-    zone_io::load(dst, ss);
-
-    bool found = false;
-    for (auto e : dst.view<ChildZoneSummary>())
-        if (dst.get<ChildZoneSummary>(e).key == ZoneKey{200}) found = true;
-    CHECK("child stub survived", found);
-    return true;
-}
-
 static bool test_zone_path_deterministic() {
     FolderZoneStore s{"zones"};
     auto k = make_zone_key(ZoneType{1}, 5, 6, 7);
@@ -258,23 +134,22 @@ static bool test_save_load_root() {
         GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
         auto e = gm.root.create();
         gm.root.emplace<ZoneMeta>(e, ZONE_ROOT, ZONE_ROOT);
-        gm.create(child, ZONE_ROOT);   // 在 root 中註冊一個 child stub
+        gm.create(child, ZONE_ROOT);   // 建立並持久化一個子 zone
         gm.save_all();
     }
 
     bool ok = true;
-    {   // session 2：重新開啟，驗證 root 與其 child 索引已持久化
+    {   // session 2：重新開啟，驗證 root 已還原、子 zone 不自動載入但可按需載入
         GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
         gm2.load_root();
 
-        auto kids = gm2.children(ZONE_ROOT);
-        if (!contains(kids, child)) ok = false;
-        // child zone 尚未載入（按需 streaming）
-        if (gm2.get(child) != nullptr) ok = false;
+        if (gm2.root.view<ZoneMeta>().empty()) ok = false;   // root 的 snapshot 已還原
+        if (gm2.get(child) != nullptr) ok = false;           // 子 zone 尚未載入（按需）
+        if (gm2.load(child).view<ZoneMeta>().empty()) ok = false;  // 但能從 store 載入
     }
 
     std::filesystem::remove_all(dir);
-    CHECK("root + child index persisted, child not auto-loaded", ok);
+    CHECK("root persisted, child not auto-loaded but loadable", ok);
     return true;
 }
 
@@ -285,15 +160,17 @@ static bool test_world_config_persists() {
     bool ok = true;
     {   // 新遊戲：未設定的 config 會讀到預設值，接著選定 world size 並存檔
         GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
-        if (gm.world_config().world_dim != zone_scale::WORLD_DIM_DEFAULT) ok = false;
-        gm.init_world(64);
-        if (gm.world_config().world_dim != 64) ok = false;   // 設定後立即可讀
+        if (gm.world_config().world_dim_x != zone_scale::WORLD_DIM_DEFAULT) ok = false;
+        gm.init_world(64, 48);
+        if (gm.world_config().world_dim_x != 64) ok = false;   // 設定後立即可讀
+        if (gm.world_config().world_dim_y != 48) ok = false;
         gm.save_all();
     }
     {   // 重新開啟：world_dim 由 root 的 snapshot 還原（每份存檔各自固定、不可變）
         GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
         gm2.load_root();
-        if (gm2.world_config().world_dim != 64) ok = false;
+        if (gm2.world_config().world_dim_x != 64) ok = false;
+        if (gm2.world_config().world_dim_y != 48) ok = false;
     }
 
     std::filesystem::remove_all(dir);
@@ -400,64 +277,6 @@ static bool test_zone_layers_and_parent() {
     return true;
 }
 
-static bool test_chunk_key_grouping() {
-    using namespace zone_scale;
-    auto r_a = region_key(10, 10);
-    auto r_b = region_key(12, 11);   // 與 r_a 同一個 5×5 chunk
-    auto r_c = region_key(20, 20);   // 不同 chunk
-    CHECK("same chunk",   chunk_key_of(r_a) == chunk_key_of(r_b));
-    CHECK("diff chunk",   chunk_key_of(r_a) != chunk_key_of(r_c));
-    CHECK("chunk coord",  zone_key_x(chunk_key_of(r_a)) == 10 / REGION_CHUNK);
-    // Area 是 1:1 -> 自成一個 chunk
-    auto a = area_key(3, 4, 1, 2);
-    CHECK("area self-chunk", chunk_key_of(a) == a);
-    return true;
-}
-
-static bool test_chunked_store_packs_zones() {
-    auto dir = std::filesystem::temp_directory_path() / "medps_test_chunk";
-    std::filesystem::remove_all(dir);
-
-    auto r_a = region_key(10, 10);
-    auto r_b = region_key(12, 11);   // 落在與 r_a 相同的 chunk
-    bool ok = (chunk_key_of(r_a) == chunk_key_of(r_b));   // 本測試的前置條件
-
-    {   // 寫入兩個共用同一 chunk 的 zone
-        ChunkedFolderZoneStore s{dir};
-        s.write(r_a, "alpha");
-        s.write(r_b, "bravo");
-        s.flush();
-    }
-
-    // 兩個 zone 都被打包進「同一個」chunk 檔（正是 Plan B 的核心目的）
-    int chunk_files = 0;
-    if (std::filesystem::exists(dir))
-        for (auto& e : std::filesystem::directory_iterator(dir))
-            if (e.path().extension() == ".chunk") ++chunk_files;
-    if (chunk_files != 1) ok = false;
-
-    {   // 重新開啟：每個 zone 都能各自獨立 round-trip
-        ChunkedFolderZoneStore s2{dir};
-        auto a = s2.read(r_a);
-        auto b = s2.read(r_b);
-        if (!a || *a != "alpha") ok = false;
-        if (!b || *b != "bravo") ok = false;
-        s2.write(r_a, "ALPHA2");          // 覆寫 chunk 中的其中一個 zone
-    }
-    {   // 局部更新不可破壞同一 chunk 中的另一個 zone
-        ChunkedFolderZoneStore s3{dir};
-        auto a = s3.read(r_a);
-        auto b = s3.read(r_b);
-        if (!a || *a != "ALPHA2") ok = false;
-        if (!b || *b != "bravo")  ok = false;
-        if (s3.has(region_key(99, 99))) ok = false;   // 不存在的 zone -> 應回報不存在
-    }
-
-    std::filesystem::remove_all(dir);
-    CHECK("two zones share one chunk file, independent round-trip + partial update", ok);
-    return true;
-}
-
 static bool test_blocking_roundtrip() {
     entt::registry src;
     auto e = src.create();
@@ -500,73 +319,6 @@ static bool test_area_terrain_roundtrip() {
     return true;
 }
 
-static bool test_prefetch_loads_chunk() {
-    auto dir = std::filesystem::temp_directory_path() / "medps_test_prefetch";
-    std::filesystem::remove_all(dir);
-
-    auto a   = region_key(10, 10);
-    auto b   = region_key(11, 10);   // 與 a 同一個 5x5 chunk
-    auto c   = region_key(12, 11);   // 同一個 chunk
-    auto far = region_key(40, 40);   // 不同 chunk
-    bool ok  = (chunk_key_of(a) == chunk_key_of(b)) && (chunk_key_of(a) == chunk_key_of(c))
-            && (chunk_key_of(a) != chunk_key_of(far));
-
-    {   // session 1：建立並持久化四個 region zone
-        GlobalManager gm{std::make_unique<ChunkedFolderZoneStore>(dir)};
-        gm.create(a, ZONE_ROOT);
-        gm.create(b, ZONE_ROOT);
-        gm.create(c, ZONE_ROOT);
-        gm.create(far, ZONE_ROOT);
-        gm.save_all();
-    }
-    {   // session 2：prefetch 一個 zone -> 整個 chunk 都會被載入；遠處那個則不會
-        GlobalManager gm2{std::make_unique<ChunkedFolderZoneStore>(dir)};
-        gm2.prefetch(a);
-        if (gm2.get(a)   == nullptr) ok = false;
-        if (gm2.get(b)   == nullptr) ok = false;   // 同 chunk 的手足，已被 prefetch
-        if (gm2.get(c)   == nullptr) ok = false;
-        if (gm2.get(far) != nullptr) ok = false;   // 不同 chunk，未被觸及
-    }
-
-    std::filesystem::remove_all(dir);
-    CHECK("prefetch loads chunk siblings, not other chunks", ok);
-    return true;
-}
-
-static bool test_stream_around_window() {
-    auto dir = std::filesystem::temp_directory_path() / "medps_test_stream";
-    std::filesystem::remove_all(dir);
-
-    {   // 位於 world-tiles 10..14 的 5x5 region zone 區塊，全部持久化
-        GlobalManager gm{std::make_unique<ChunkedFolderZoneStore>(dir)};
-        for (int x = 10; x <= 14; ++x)
-            for (int y = 10; y <= 14; ++y)
-                gm.create(region_key((int16_t)x, (int16_t)y), ZONE_ROOT);
-        gm.save_all();
-    }
-
-    bool ok = true;
-    {
-        GlobalManager gm2{std::make_unique<ChunkedFolderZoneStore>(dir)};
-        gm2.stream_around(region_key(12, 12), 1);   // 3x3 視窗：x、y 介於 11..13
-
-        if (gm2.get(region_key(12, 12)) == nullptr) ok = false;  // 中心
-        if (gm2.get(region_key(11, 11)) == nullptr) ok = false;  // 視窗角落
-        if (gm2.get(region_key(13, 13)) == nullptr) ok = false;
-        if (gm2.get(region_key(10, 12)) != nullptr) ok = false;  // 視窗外（dx=-2）
-        if (gm2.get(region_key(14, 12)) != nullptr) ok = false;  // 視窗外（dx=+2）
-
-        // 焦點向東移動 -> 視窗重新以 (13,12) 為中心，涵蓋 x 12..14
-        gm2.stream_around(region_key(13, 12), 1);
-        if (gm2.get(region_key(14, 12)) == nullptr) ok = false;  // 新進入視窗
-        if (gm2.get(region_key(11, 11)) != nullptr) ok = false;  // 滾出視窗 -> 被卸載
-    }
-
-    std::filesystem::remove_all(dir);
-    CHECK("stream_around loads window + evicts on move", ok);
-    return true;
-}
-
 static bool test_serialize_empty() {
     entt::registry src;
     std::stringstream ss;
@@ -587,13 +339,6 @@ int main() {
         { "serialize_roundtrip",        test_serialize_roundtrip        },
         { "serialize_orphans_removed",  test_serialize_orphans_removed  },
         { "zone_meta_placeholder",      test_zone_meta_placeholder_survives },
-        { "resolve_root",               test_resolve_root               },
-        { "resolve_unloaded_zone",      test_resolve_unloaded_zone      },
-        { "resolve_loaded_zone",        test_resolve_loaded_zone        },
-        { "child_index_flat",           test_child_index_flat           },
-        { "child_index_hierarchy",      test_child_index_hierarchy      },
-        { "child_overview",             test_child_overview_without_loading },
-        { "child_summary_roundtrip",    test_child_summary_roundtrip    },
         { "zone_path_deterministic",    test_zone_path_deterministic    },
         { "save_load_root",             test_save_load_root             },
         { "world_config_persists",      test_world_config_persists      },
@@ -602,10 +347,6 @@ int main() {
         { "tick_per_loaded_zone",       test_tick_runs_per_loaded_zone  },
         { "tick_system_order",          test_tick_system_order          },
         { "zone_layers_and_parent",     test_zone_layers_and_parent     },
-        { "chunk_key_grouping",         test_chunk_key_grouping         },
-        { "chunked_store_packs_zones",  test_chunked_store_packs_zones  },
-        { "prefetch_loads_chunk",       test_prefetch_loads_chunk       },
-        { "stream_around_window",       test_stream_around_window       },
         { "blocking_roundtrip",         test_blocking_roundtrip         },
         { "area_terrain_roundtrip",     test_area_terrain_roundtrip     },
         { "serialize_empty",            test_serialize_empty            },
