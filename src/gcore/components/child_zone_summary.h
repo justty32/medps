@@ -1,10 +1,10 @@
 #pragma once
 #include "../zone_key.h"
 
-// Lightweight stub stored in a PARENT zone's registry, one per direct child zone.
-// Lets a loaded parent enumerate / overview its children without loading them.
-// Attach extra components (map position, icon, explored flag...) to the same
-// stub entity as needed.
+// 存在 PARENT zone 的 registry 裡的輕量 stub，每個直接 child zone 一個。
+// 讓已載入的 parent 不必載入子 zone 即可列舉 / 概覽其 children。
+// 可視需要把額外的 component（地圖位置、icon、已探索 flag...）掛到同一個
+// stub entity 上。
 struct ChildZoneSummary {
     ZoneKey key{ZONE_ROOT};
 

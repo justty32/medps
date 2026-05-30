@@ -13,7 +13,7 @@ struct output_archive {
     template<typename T>
     void operator()(entt::entity e, const T& c) { ar(static_cast<entt_id_t>(e), c); }
     template<typename T>
-    void operator()(const T& v)                 { ar(v); }  // component data (separate call)
+    void operator()(const T& v)                 { ar(v); }  // component 資料（獨立的呼叫）
 };
 
 struct input_archive {
@@ -32,5 +32,5 @@ struct input_archive {
         e = static_cast<entt::entity>(v);
     }
     template<typename T>
-    void operator()(T& v) { ar(v); }  // component data (separate call)
+    void operator()(T& v) { ar(v); }  // component 資料（獨立的呼叫）
 };

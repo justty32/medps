@@ -5,9 +5,9 @@
 
 namespace medp_gd {
 
-// Smoke-test facade: a RefCounted that GDScript can `new` and call.
-// Proves the toolchain (godot-cpp build -> bindings -> link medp_static ->
-// .dll -> Godot loads -> GDScript calls) works end to end.
+// Smoke-test facade：一個 GDScript 可以 `new` 並呼叫的 RefCounted。
+// 用來驗證整條工具鏈（godot-cpp build -> bindings -> link medp_static ->
+// .dll -> Godot 載入 -> GDScript 呼叫）能從頭到尾正常運作。
 class MedpCore : public godot::RefCounted {
     GDCLASS(MedpCore, godot::RefCounted)
 

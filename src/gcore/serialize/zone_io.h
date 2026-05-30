@@ -22,9 +22,9 @@ namespace detail {
         auto loader = entt::snapshot_loader{reg};
         loader.get<entt::entity>(in);
         (loader.get<Cs>(in), ...);
-        // orphans() destroys every entity that ends up with no component.
-        // CONVENTION: a freshly-created zone must hold a placeholder entity
-        // carrying at least one component, otherwise it would be wiped here.
+        // orphans() 會銷毀所有最終沒有任何 component 的 entity。
+        // 慣例：剛建立的 zone 必須保留一個帶有至少一個 component 的
+        // 佔位 entity，否則它會在這裡被清掉。
         loader.orphans();
     }
 

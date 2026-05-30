@@ -18,7 +18,7 @@ void uninitialize_medp_module(ModuleInitializationLevel p_level) {
 }
 
 extern "C" {
-// Symbol name must match `entry_symbol` in medp.gdextension.
+// 符號名稱必須與 medp.gdextension 中的 `entry_symbol` 一致。
 GDExtensionBool GDE_EXPORT medp_library_init(
         GDExtensionInterfaceGetProcAddress p_get_proc_address,
         GDExtensionClassLibraryPtr p_library,

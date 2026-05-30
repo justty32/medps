@@ -2,9 +2,8 @@
 #include <cstdint>
 #include "../util/tdarray.hpp"
 
-// One cell of an Area's terrain grid. `terrain` is a def id (content / frontend
-// maps it to visuals); `flags` caches sim-relevant passability so FOV / pathing
-// need not look up the terrain def per cell.
+// Area terrain grid 中的一格。`terrain` 是 def id（由內容 / 前端對映到視覺呈現）；
+// `flags` 快取與模擬相關的通行性，讓 FOV / 尋路不必每格去查 terrain def。
 inline constexpr uint8_t TILE_WALKABLE     = 1 << 0;
 inline constexpr uint8_t TILE_BLOCKS_SIGHT = 1 << 1;
 
@@ -16,12 +15,12 @@ struct Tile {
     void serialize(Archive& ar) { ar(terrain, flags); }
 };
 
-// The dense terrain grid of one Area zone (Rimworld-style, ~250x250). Held as a
-// component on a single "map" entity so it rides the normal snapshot/cereal save
-// path -- registry ctx() is NOT serialized by zone_io. Mobile "things" (actors,
-// items) are separate entities; tiles are NOT one-entity-per-cell.
+// 一個 Area zone 的密集 terrain grid（Rimworld 風格，約 250x250）。以 component 掛在
+// 單一「map」entity 上，因此會跟著走正常的 snapshot/cereal 存檔路徑
+// -- registry ctx() 不會被 zone_io 序列化。可移動的「things」（actor、
+// item）是各自獨立的 entity；tile 並非一格一個 entity。
 struct AreaTerrain {
-    tdarray<Tile> tiles;   // dimensions live in tiles.sx / tiles.sy
+    tdarray<Tile> tiles;   // 維度大小存在 tiles.sx / tiles.sy
 
     template<class Archive>
     void serialize(Archive& ar) { ar(tiles); }

@@ -5,9 +5,9 @@
 
 namespace systems {
 
-// Per-zone system: advance every actor with a Velocity by one step.
-// Signature is void(entt::registry&) so it can be registered as a zone system
-// on the GlobalManager and run against each loaded zone.
+// 每個 zone 的 system：讓每個帶有 Velocity 的 actor 前進一步。
+// 簽章為 void(entt::registry&)，因此可以註冊為 GlobalManager 上的
+// zone system，並對每個已載入的 zone 執行。
 inline void movement(entt::registry& reg) {
     reg.view<Position, Velocity>().each([](Position& p, Velocity& v) {
         p.x += v.dx;

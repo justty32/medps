@@ -13,16 +13,16 @@
 #include "zone_store.h"
 #include "../chunk_key.h"
 
-// Plan B storage: one file per CHUNK (a block of logical zones), not per zone.
-// A chunk file is a cereal PortableBinary `map<ZoneKey, bytes>`. Each logical
-// zone keeps its own independent blob (produced by zone_io); this only groups
-// those blobs on disk -- cutting file count (Region 5×5 ÷25) without touching
-// the registry / entity-namespace / CrossZoneRef semantics. Area stays 1:1.
+// Plan B 儲存：每個 CHUNK（一塊邏輯 zone 的集合）一個檔案，而非每個 zone 一個。
+// 一個 chunk 檔是一份 cereal PortableBinary 的 `map<ZoneKey, bytes>`。每個邏輯
+// zone 保有自己獨立的 blob（由 zone_io 產生）；這裡只是把那些 blob 在磁碟上
+// 分組——減少檔案數量（Region 5×5 ÷25），同時不動到 registry /
+// entity-namespace / CrossZoneRef 的語意。Area 維持 1:1。
 //
-// Write-through: every write() persists its chunk immediately, so unload()
-// (which does not call flush()) durably persists -- matching FolderZoneStore.
-// flush() is therefore a no-op. An in-memory cache avoids re-reading a chunk
-// file on every access; references into it stay stable (unordered_map).
+// Write-through：每次 write() 都會立刻持久化其 chunk，因此 unload()
+//（不會呼叫 flush()）也能持久保存——與 FolderZoneStore 一致。
+// 所以 flush() 是 no-op。一個記憶體內快取避免每次存取都重讀 chunk
+// 檔；指向它的參照保持穩定（unordered_map）。
 class ChunkedFolderZoneStore : public ZoneStore {
 public:
     explicit ChunkedFolderZoneStore(std::filesystem::path dir) : dir_(std::move(dir)) {}
@@ -52,7 +52,7 @@ public:
         return chunk.find(key) != chunk.end();
     }
 
-    // every zone persisted in key's chunk file (the prefetch unit).
+    // 持久化在 key 所屬 chunk 檔中的每個 zone（prefetch 單位）。
     std::vector<ZoneKey> group_of(ZoneKey key) override {
         Chunk& chunk = load_chunk(chunk_key_of(key));
         std::vector<ZoneKey> out;
@@ -62,7 +62,7 @@ public:
     }
 
 private:
-    using Chunk = std::map<ZoneKey, std::string>;   // ordered -> deterministic file
+    using Chunk = std::map<ZoneKey, std::string>;   // 有序 -> 檔案內容具決定性
 
     Chunk& load_chunk(ZoneKey ck) {
         if (auto it = cache_.find(ck); it != cache_.end()) return it->second;
@@ -80,7 +80,7 @@ private:
         std::filesystem::create_directories(dir_);
         std::ofstream ofs{chunk_path(ck), std::ios::binary};
         cereal::PortableBinaryOutputArchive out{ofs};
-        out(chunk);   // flushed when `out` is destroyed, before `ofs` closes
+        out(chunk);   // 在 `out` 解構時（`ofs` 關閉前）flush
     }
 
     std::filesystem::path                  dir_;

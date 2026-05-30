@@ -1,7 +1,7 @@
 #pragma once
 
-// Per-tick movement step on the zone grid (integer tiles).
-// Demo component for the movement system; refine for the real turn model later.
+// 在 zone grid 上每個 tick 的移動步進（整數 tile）。
+// movement system 的示範 component；之後再針對真正的回合模型細修。
 struct Velocity {
     int dx{};
     int dy{};
