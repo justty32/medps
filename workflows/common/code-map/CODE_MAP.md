@@ -50,6 +50,7 @@ data/               — 資料目錄（build 時複製到 build/bin/data）
 | `work/design/lifecycle.md` | zone 生命週期設計 |
 | `work/architecture/gcore_overview.md` | gcore 架構總覽 |
 | `notes/gd/` | Godot 前端草稿 |
+| `workflows/common/code-map/html/` | 程式碼 HTML 導覽層（`build.py` 生成，嵌入帶行號原始碼；真相層是原始碼與 CODE_TOUR） |
 
 ## 架構不變量（修改前必知）
 

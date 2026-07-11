@@ -13,5 +13,6 @@
 
 ## Open
 
-- 無。
+- **待過目** `src/gcore/util/tdarray.hpp:10-27` — 補上全檔僅缺的註解：檔頭三條使用慣例（true=失敗、is_coor 座標、get/getptr/getval 差異），加上各函式家族短註；純註解、零邏輯變更，16 項測試全綠。
+- **待過目＋親自驗證** `workflows/common/code-map/html/index.html` — 新的程式碼 HTML 導覽層（8 站、嵌入帶行號上色的原始碼、行號錨點、深淺色主題）。請用瀏覽器開啟看瀏覽體驗是否合意；由 `build.py` 生成，程式碼更新後重跑 `python3 build.py` 即同步。
 

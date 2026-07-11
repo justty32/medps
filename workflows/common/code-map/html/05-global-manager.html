@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 站 GlobalManager — 總管</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+
+<nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
+<h1>第 5 站 GlobalManager — 總管</h1>
+<p class="meta">2 個檔案，共 168 行 ·
+ 對照 <a href="../CODE_TOUR.md">CODE_TOUR.md</a></p>
+<p>一個 zone = 一個 <code>entt::registry</code>，由 GlobalManager 集中管理；root 永久存活、放全局實體（陣營 / 神祇 / 具名角色），其餘 zones 按需載入卸載。</p><p>header 的 API 註解已寫得很完整；.cpp 每個函式都在 10 行以內。</p>
+<h2>看什麼</h2>
+<ul class="points">
+<li>create：植入 ZoneMeta placeholder（可在 orphans() 中存活）。 <a class="loc" href="#src-gcore-global-manager-cpp-L24">global_manager.cpp:24</a></li><li>load：store 沒有該 key 時「靜默給空 registry」——目前語意如此，不是 bug。 <a class="loc" href="#src-gcore-global-manager-cpp-L34">global_manager.cpp:34</a></li><li>unload：先序列化落盤，再從記憶體卸除。 <a class="loc" href="#src-gcore-global-manager-cpp-L45">global_manager.cpp:45</a></li><li>tick：對每個已載入 zone × 每個 system 依註冊順序跑；root 不參加 tick。 <a class="loc" href="#src-gcore-global-manager-cpp-L90">global_manager.cpp:90</a></li><li>init_world：assert 檢查 valid_world_dim，冪等覆寫 ROOT singleton。 <a class="loc" href="#src-gcore-global-manager-cpp-L66">global_manager.cpp:66</a></li><li>save_all：root + 所有已載入 zone 寫入 store（不卸除），最後 flush。 <a class="loc" href="#src-gcore-global-manager-cpp-L52">global_manager.cpp:52</a></li>
+</ul>
+<div class="quiz"><b>讀完該能回答：</b>load() 一個 store 裡不存在的 key 會發生什麼事？root 為什麼被排除在 tick() 之外？</div>
+
+<section class="file" id="src-gcore-global-manager-h">
+  <h3><code>src/gcore/global_manager.h</code> <span class="dim">（74 行）</span>
+      <a class="loc" href="../../../../src/gcore/global_manager.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="src-gcore-global-manager-h-L1"><a class="no" href="#src-gcore-global-manager-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="src-gcore-global-manager-h-L2"><a class="no" href="#src-gcore-global-manager-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;unordered_map&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L3"><a class="no" href="#src-gcore-global-manager-h-L3">3</a><span class="src"><span class="pp">#include</span> &lt;memory&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L4"><a class="no" href="#src-gcore-global-manager-h-L4">4</a><span class="src"><span class="pp">#include</span> &lt;vector&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L5"><a class="no" href="#src-gcore-global-manager-h-L5">5</a><span class="src"><span class="pp">#include</span> &lt;functional&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L6"><a class="no" href="#src-gcore-global-manager-h-L6">6</a><span class="src"><span class="pp">#include</span> &lt;entt.hpp&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L7"><a class="no" href="#src-gcore-global-manager-h-L7">7</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;zone_key.h&quot;</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L8"><a class="no" href="#src-gcore-global-manager-h-L8">8</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;components/world_config.h&quot;</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L9"><a class="no" href="#src-gcore-global-manager-h-L9">9</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;serialize/zone_store.h&quot;</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L10"><a class="no" href="#src-gcore-global-manager-h-L10">10</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L11"><a class="no" href="#src-gcore-global-manager-h-L11">11</a><span class="src"><span class="kw">class</span> GlobalManager {</span></div>
+<div class="line" id="src-gcore-global-manager-h-L12"><a class="no" href="#src-gcore-global-manager-h-L12">12</a><span class="src"><span class="kw">public</span>:</span></div>
+<div class="line" id="src-gcore-global-manager-h-L13"><a class="no" href="#src-gcore-global-manager-h-L13">13</a><span class="src">    entt::registry root;   <span class="cm">// ZONE_ROOT，永遠存活</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L14"><a class="no" href="#src-gcore-global-manager-h-L14">14</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L15"><a class="no" href="#src-gcore-global-manager-h-L15">15</a><span class="src">    GlobalManager();</span></div>
+<div class="line" id="src-gcore-global-manager-h-L16"><a class="no" href="#src-gcore-global-manager-h-L16">16</a><span class="src">    <span class="kw">explicit</span> GlobalManager(std::unique_ptr&lt;ZoneStore&gt; store);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L17"><a class="no" href="#src-gcore-global-manager-h-L17">17</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L18"><a class="no" href="#src-gcore-global-manager-h-L18">18</a><span class="src">    <span class="cm">// 未載入則回傳 nullptr</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L19"><a class="no" href="#src-gcore-global-manager-h-L19">19</a><span class="src">    entt::registry* get(ZoneKey key);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L20"><a class="no" href="#src-gcore-global-manager-h-L20">20</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L21"><a class="no" href="#src-gcore-global-manager-h-L21">21</a><span class="src">    <span class="cm">// 在 `parent` 底下建立一個全新的 zone，植入它的 ZoneMeta placeholder。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L22"><a class="no" href="#src-gcore-global-manager-h-L22">22</a><span class="src">    <span class="cm">// parent 記錄在 ZoneMeta 中（key 階層本身就隱含父層關係）。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L23"><a class="no" href="#src-gcore-global-manager-h-L23">23</a><span class="src">    entt::registry&amp; create(ZoneKey key, ZoneKey parent);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L24"><a class="no" href="#src-gcore-global-manager-h-L24">24</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L25"><a class="no" href="#src-gcore-global-manager-h-L25">25</a><span class="src">    <span class="cm">// 從 store 反序列化一個 zone；若已載入則回傳既有者。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L26"><a class="no" href="#src-gcore-global-manager-h-L26">26</a><span class="src">    entt::registry&amp; load(ZoneKey key);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L27"><a class="no" href="#src-gcore-global-manager-h-L27">27</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L28"><a class="no" href="#src-gcore-global-manager-h-L28">28</a><span class="src">    <span class="cm">// 把一個 zone 序列化到 store 並從記憶體中卸除。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L29"><a class="no" href="#src-gcore-global-manager-h-L29">29</a><span class="src">    <span class="kw">void</span> unload(ZoneKey key);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L30"><a class="no" href="#src-gcore-global-manager-h-L30">30</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L31"><a class="no" href="#src-gcore-global-manager-h-L31">31</a><span class="src">    <span class="cm">// ---- systems ----</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L32"><a class="no" href="#src-gcore-global-manager-h-L32">32</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L33"><a class="no" href="#src-gcore-global-manager-h-L33">33</a><span class="src">    <span class="cm">// per-zone 系統：對單一 zone 的 registry 執行。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L34"><a class="no" href="#src-gcore-global-manager-h-L34">34</a><span class="src">    <span class="kw">using</span> ZoneSystem = std::function&lt;<span class="kw">void</span>(entt::registry&amp;)&gt;;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L35"><a class="no" href="#src-gcore-global-manager-h-L35">35</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L36"><a class="no" href="#src-gcore-global-manager-h-L36">36</a><span class="src">    <span class="cm">// 註冊一個 per-zone 系統；tick() 會依註冊順序執行它們。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L37"><a class="no" href="#src-gcore-global-manager-h-L37">37</a><span class="src">    <span class="kw">void</span> add_zone_system(ZoneSystem sys);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L38"><a class="no" href="#src-gcore-global-manager-h-L38">38</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L39"><a class="no" href="#src-gcore-global-manager-h-L39">39</a><span class="src">    <span class="cm">// 推進一步：對每個已載入的 zone 執行所有已註冊的 per-zone 系統</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L40"><a class="no" href="#src-gcore-global-manager-h-L40">40</a><span class="src">    <span class="cm">//（root 被排除 -- 它存放全局 entity，而非地圖角色；cross-zone 系統會另外處理）。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L41"><a class="no" href="#src-gcore-global-manager-h-L41">41</a><span class="src">    <span class="kw">void</span> tick();</span></div>
+<div class="line" id="src-gcore-global-manager-h-L42"><a class="no" href="#src-gcore-global-manager-h-L42">42</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L43"><a class="no" href="#src-gcore-global-manager-h-L43">43</a><span class="src">    <span class="cm">// ---- 整局存檔 / 讀檔 ----</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L44"><a class="no" href="#src-gcore-global-manager-h-L44">44</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L45"><a class="no" href="#src-gcore-global-manager-h-L45">45</a><span class="src">    <span class="cm">// 檢查點：把 root + 目前所有已載入的 zone 寫入 store（不做卸除）。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L46"><a class="no" href="#src-gcore-global-manager-h-L46">46</a><span class="src">    <span class="kw">void</span> save_all();</span></div>
+<div class="line" id="src-gcore-global-manager-h-L47"><a class="no" href="#src-gcore-global-manager-h-L47">47</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L48"><a class="no" href="#src-gcore-global-manager-h-L48">48</a><span class="src">    <span class="cm">// 開啟一局遊戲：載入 root registry。子 zone 留在 store 中，直到透過</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L49"><a class="no" href="#src-gcore-global-manager-h-L49">49</a><span class="src">    <span class="cm">// load()/create() 按需載入。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L50"><a class="no" href="#src-gcore-global-manager-h-L50">50</a><span class="src">    <span class="kw">void</span> load_root();</span></div>
+<div class="line" id="src-gcore-global-manager-h-L51"><a class="no" href="#src-gcore-global-manager-h-L51">51</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L52"><a class="no" href="#src-gcore-global-manager-h-L52">52</a><span class="src">    <span class="cm">// ---- per-save 世界設定（ROOT singleton）----</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L53"><a class="no" href="#src-gcore-global-manager-h-L53">53</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L54"><a class="no" href="#src-gcore-global-manager-h-L54">54</a><span class="src">    <span class="cm">// 新遊戲：植入 root 的 WorldConfig（world_dim_x/y/z 可選；小/中/大）。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L55"><a class="no" href="#src-gcore-global-manager-h-L55">55</a><span class="src">    <span class="cm">// 冪等 -- 覆寫既有的 singleton。一旦有 zone 存在，world_dim 在這局存檔的生命週期</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L56"><a class="no" href="#src-gcore-global-manager-h-L56">56</a><span class="src">    <span class="cm">// 內就不可變（它已被烘進 key 運算中）。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L57"><a class="no" href="#src-gcore-global-manager-h-L57">57</a><span class="src">    <span class="cm">// 前置條件：x、y 滿足 zone_scale::valid_world_dim。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L58"><a class="no" href="#src-gcore-global-manager-h-L58">58</a><span class="src">    WorldConfig&amp; init_world(<span class="kw">int16_t</span> world_dim_x = zone_scale::WORLD_DIM_DEFAULT,</span></div>
+<div class="line" id="src-gcore-global-manager-h-L59"><a class="no" href="#src-gcore-global-manager-h-L59">59</a><span class="src">                            <span class="kw">int16_t</span> world_dim_y = zone_scale::WORLD_DIM_DEFAULT,</span></div>
+<div class="line" id="src-gcore-global-manager-h-L60"><a class="no" href="#src-gcore-global-manager-h-L60">60</a><span class="src">                            <span class="kw">int16_t</span> world_dim_z = zone_scale::WORLD_LAYERS_DEFAULT);</span></div>
+<div class="line" id="src-gcore-global-manager-h-L61"><a class="no" href="#src-gcore-global-manager-h-L61">61</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L62"><a class="no" href="#src-gcore-global-manager-h-L62">62</a><span class="src">    <span class="cm">// 目前生效的 per-save 設定（root 的 singleton）；未設定時為預設建構值。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L63"><a class="no" href="#src-gcore-global-manager-h-L63">63</a><span class="src">    <span class="cm">// 系統以 `const WorldConfig&amp;` 接收回傳值。</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L64"><a class="no" href="#src-gcore-global-manager-h-L64">64</a><span class="src">    WorldConfig world_config() <span class="kw">const</span>;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L65"><a class="no" href="#src-gcore-global-manager-h-L65">65</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L66"><a class="no" href="#src-gcore-global-manager-h-L66">66</a><span class="src">    ZoneStore&amp; store() { <span class="kw">return</span> *store_; }</span></div>
+<div class="line" id="src-gcore-global-manager-h-L67"><a class="no" href="#src-gcore-global-manager-h-L67">67</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L68"><a class="no" href="#src-gcore-global-manager-h-L68">68</a><span class="src"><span class="kw">private</span>:</span></div>
+<div class="line" id="src-gcore-global-manager-h-L69"><a class="no" href="#src-gcore-global-manager-h-L69">69</a><span class="src">    <span class="kw">void</span> write_zone(ZoneKey key, entt::registry&amp; reg);        <span class="cm">// reg -&gt; bytes -&gt; store（序列化後寫入）</span></span></div>
+<div class="line" id="src-gcore-global-manager-h-L70"><a class="no" href="#src-gcore-global-manager-h-L70">70</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-h-L71"><a class="no" href="#src-gcore-global-manager-h-L71">71</a><span class="src">    std::unique_ptr&lt;ZoneStore&gt;                                   store_;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L72"><a class="no" href="#src-gcore-global-manager-h-L72">72</a><span class="src">    std::unordered_map&lt;ZoneKey, std::unique_ptr&lt;entt::registry&gt;&gt; loaded_;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L73"><a class="no" href="#src-gcore-global-manager-h-L73">73</a><span class="src">    std::vector&lt;ZoneSystem&gt;                                      zone_systems_;</span></div>
+<div class="line" id="src-gcore-global-manager-h-L74"><a class="no" href="#src-gcore-global-manager-h-L74">74</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="src-gcore-global-manager-cpp">
+  <h3><code>src/gcore/global_manager.cpp</code> <span class="dim">（94 行）</span>
+      <a class="loc" href="../../../../src/gcore/global_manager.cpp">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="src-gcore-global-manager-cpp-L1"><a class="no" href="#src-gcore-global-manager-cpp-L1">1</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;global_manager.h&quot;</span></span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L2"><a class="no" href="#src-gcore-global-manager-cpp-L2">2</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;serialize/zone_io.h&quot;</span></span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L3"><a class="no" href="#src-gcore-global-manager-cpp-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;components/zone_meta.h&quot;</span></span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L4"><a class="no" href="#src-gcore-global-manager-cpp-L4">4</a><span class="src"><span class="pp">#include</span> &lt;sstream&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L5"><a class="no" href="#src-gcore-global-manager-cpp-L5">5</a><span class="src"><span class="pp">#include</span> &lt;cassert&gt;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L6"><a class="no" href="#src-gcore-global-manager-cpp-L6">6</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L7"><a class="no" href="#src-gcore-global-manager-cpp-L7">7</a><span class="src">GlobalManager::GlobalManager()</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L8"><a class="no" href="#src-gcore-global-manager-cpp-L8">8</a><span class="src">    : GlobalManager(std::make_unique&lt;FolderZoneStore&gt;(<span class="st">&quot;zones&quot;</span>)) {}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L9"><a class="no" href="#src-gcore-global-manager-cpp-L9">9</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L10"><a class="no" href="#src-gcore-global-manager-cpp-L10">10</a><span class="src">GlobalManager::GlobalManager(std::unique_ptr&lt;ZoneStore&gt; store)</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L11"><a class="no" href="#src-gcore-global-manager-cpp-L11">11</a><span class="src">    : store_(std::move(store)) {}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L12"><a class="no" href="#src-gcore-global-manager-cpp-L12">12</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L13"><a class="no" href="#src-gcore-global-manager-cpp-L13">13</a><span class="src">entt::registry* GlobalManager::get(ZoneKey key) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L14"><a class="no" href="#src-gcore-global-manager-cpp-L14">14</a><span class="src">    <span class="kw">auto</span> it = loaded_.find(key);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L15"><a class="no" href="#src-gcore-global-manager-cpp-L15">15</a><span class="src">    <span class="kw">return</span> (it != loaded_.end()) ? it-&gt;second.get() : <span class="kw">nullptr</span>;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L16"><a class="no" href="#src-gcore-global-manager-cpp-L16">16</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L17"><a class="no" href="#src-gcore-global-manager-cpp-L17">17</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L18"><a class="no" href="#src-gcore-global-manager-cpp-L18">18</a><span class="src"><span class="kw">void</span> GlobalManager::write_zone(ZoneKey key, entt::registry&amp; reg) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L19"><a class="no" href="#src-gcore-global-manager-cpp-L19">19</a><span class="src">    std::ostringstream oss;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L20"><a class="no" href="#src-gcore-global-manager-cpp-L20">20</a><span class="src">    zone_io::save(reg, oss);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L21"><a class="no" href="#src-gcore-global-manager-cpp-L21">21</a><span class="src">    store_-&gt;write(key, oss.str());</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L22"><a class="no" href="#src-gcore-global-manager-cpp-L22">22</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L23"><a class="no" href="#src-gcore-global-manager-cpp-L23">23</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L24"><a class="no" href="#src-gcore-global-manager-cpp-L24">24</a><span class="src">entt::registry&amp; GlobalManager::create(ZoneKey key, ZoneKey parent) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L25"><a class="no" href="#src-gcore-global-manager-cpp-L25">25</a><span class="src">    <span class="kw">auto</span> [it, inserted] = loaded_.emplace(key, std::make_unique&lt;entt::registry&gt;());</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L26"><a class="no" href="#src-gcore-global-manager-cpp-L26">26</a><span class="src">    <span class="kw">auto</span>&amp; reg = *it-&gt;second;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L27"><a class="no" href="#src-gcore-global-manager-cpp-L27">27</a><span class="src">    <span class="kw">if</span> (inserted) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L28"><a class="no" href="#src-gcore-global-manager-cpp-L28">28</a><span class="src">        <span class="kw">auto</span> e = reg.create();                       <span class="cm">// placeholder；可在 orphans() 中存活</span></span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L29"><a class="no" href="#src-gcore-global-manager-cpp-L29">29</a><span class="src">        reg.emplace&lt;ZoneMeta&gt;(e, key, parent);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L30"><a class="no" href="#src-gcore-global-manager-cpp-L30">30</a><span class="src">    }</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L31"><a class="no" href="#src-gcore-global-manager-cpp-L31">31</a><span class="src">    <span class="kw">return</span> reg;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L32"><a class="no" href="#src-gcore-global-manager-cpp-L32">32</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L33"><a class="no" href="#src-gcore-global-manager-cpp-L33">33</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L34"><a class="no" href="#src-gcore-global-manager-cpp-L34">34</a><span class="src">entt::registry&amp; GlobalManager::load(ZoneKey key) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L35"><a class="no" href="#src-gcore-global-manager-cpp-L35">35</a><span class="src">    <span class="kw">auto</span> [it, inserted] = loaded_.emplace(key, std::make_unique&lt;entt::registry&gt;());</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L36"><a class="no" href="#src-gcore-global-manager-cpp-L36">36</a><span class="src">    <span class="kw">if</span> (inserted) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L37"><a class="no" href="#src-gcore-global-manager-cpp-L37">37</a><span class="src">        <span class="kw">if</span> (<span class="kw">auto</span> bytes = store_-&gt;read(key)) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L38"><a class="no" href="#src-gcore-global-manager-cpp-L38">38</a><span class="src">            std::istringstream iss{*bytes};</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L39"><a class="no" href="#src-gcore-global-manager-cpp-L39">39</a><span class="src">            zone_io::load(*it-&gt;second, iss);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L40"><a class="no" href="#src-gcore-global-manager-cpp-L40">40</a><span class="src">        }</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L41"><a class="no" href="#src-gcore-global-manager-cpp-L41">41</a><span class="src">    }</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L42"><a class="no" href="#src-gcore-global-manager-cpp-L42">42</a><span class="src">    <span class="kw">return</span> *it-&gt;second;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L43"><a class="no" href="#src-gcore-global-manager-cpp-L43">43</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L44"><a class="no" href="#src-gcore-global-manager-cpp-L44">44</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L45"><a class="no" href="#src-gcore-global-manager-cpp-L45">45</a><span class="src"><span class="kw">void</span> GlobalManager::unload(ZoneKey key) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L46"><a class="no" href="#src-gcore-global-manager-cpp-L46">46</a><span class="src">    <span class="kw">auto</span> it = loaded_.find(key);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L47"><a class="no" href="#src-gcore-global-manager-cpp-L47">47</a><span class="src">    <span class="kw">if</span> (it == loaded_.end()) <span class="kw">return</span>;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L48"><a class="no" href="#src-gcore-global-manager-cpp-L48">48</a><span class="src">    write_zone(key, *it-&gt;second);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L49"><a class="no" href="#src-gcore-global-manager-cpp-L49">49</a><span class="src">    loaded_.erase(it);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L50"><a class="no" href="#src-gcore-global-manager-cpp-L50">50</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L51"><a class="no" href="#src-gcore-global-manager-cpp-L51">51</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L52"><a class="no" href="#src-gcore-global-manager-cpp-L52">52</a><span class="src"><span class="kw">void</span> GlobalManager::save_all() {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L53"><a class="no" href="#src-gcore-global-manager-cpp-L53">53</a><span class="src">    write_zone(ZONE_ROOT, root);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L54"><a class="no" href="#src-gcore-global-manager-cpp-L54">54</a><span class="src">    <span class="kw">for</span> (<span class="kw">auto</span>&amp; [key, reg] : loaded_)</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L55"><a class="no" href="#src-gcore-global-manager-cpp-L55">55</a><span class="src">        write_zone(key, *reg);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L56"><a class="no" href="#src-gcore-global-manager-cpp-L56">56</a><span class="src">    store_-&gt;flush();</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L57"><a class="no" href="#src-gcore-global-manager-cpp-L57">57</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L58"><a class="no" href="#src-gcore-global-manager-cpp-L58">58</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L59"><a class="no" href="#src-gcore-global-manager-cpp-L59">59</a><span class="src"><span class="kw">void</span> GlobalManager::load_root() {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L60"><a class="no" href="#src-gcore-global-manager-cpp-L60">60</a><span class="src">    <span class="kw">if</span> (<span class="kw">auto</span> bytes = store_-&gt;read(ZONE_ROOT)) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L61"><a class="no" href="#src-gcore-global-manager-cpp-L61">61</a><span class="src">        std::istringstream iss{*bytes};</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L62"><a class="no" href="#src-gcore-global-manager-cpp-L62">62</a><span class="src">        zone_io::load(root, iss);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L63"><a class="no" href="#src-gcore-global-manager-cpp-L63">63</a><span class="src">    }</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L64"><a class="no" href="#src-gcore-global-manager-cpp-L64">64</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L65"><a class="no" href="#src-gcore-global-manager-cpp-L65">65</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L66"><a class="no" href="#src-gcore-global-manager-cpp-L66">66</a><span class="src">WorldConfig&amp; GlobalManager::init_world(<span class="kw">int16_t</span> world_dim_x, <span class="kw">int16_t</span> world_dim_y,</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L67"><a class="no" href="#src-gcore-global-manager-cpp-L67">67</a><span class="src">                                       <span class="kw">int16_t</span> world_dim_z) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L68"><a class="no" href="#src-gcore-global-manager-cpp-L68">68</a><span class="src">    assert(zone_scale::valid_world_dim(world_dim_x)</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L69"><a class="no" href="#src-gcore-global-manager-cpp-L69">69</a><span class="src">           &amp;&amp; zone_scale::valid_world_dim(world_dim_y)</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L70"><a class="no" href="#src-gcore-global-manager-cpp-L70">70</a><span class="src">           &amp;&amp; <span class="st">&quot;world_dim overflows the 16-bit ZoneKey x/y tile grid&quot;</span>);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L71"><a class="no" href="#src-gcore-global-manager-cpp-L71">71</a><span class="src">    <span class="kw">auto</span> v = root.view&lt;WorldConfig&gt;();</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L72"><a class="no" href="#src-gcore-global-manager-cpp-L72">72</a><span class="src">    entt::entity e = v.empty() ? root.create() : v.front();</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L73"><a class="no" href="#src-gcore-global-manager-cpp-L73">73</a><span class="src">    <span class="kw">auto</span>&amp; cfg = root.get_or_emplace&lt;WorldConfig&gt;(e);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L74"><a class="no" href="#src-gcore-global-manager-cpp-L74">74</a><span class="src">    cfg.world_dim_x = world_dim_x;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L75"><a class="no" href="#src-gcore-global-manager-cpp-L75">75</a><span class="src">    cfg.world_dim_y = world_dim_y;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L76"><a class="no" href="#src-gcore-global-manager-cpp-L76">76</a><span class="src">    cfg.world_dim_z = world_dim_z;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L77"><a class="no" href="#src-gcore-global-manager-cpp-L77">77</a><span class="src">    <span class="kw">return</span> cfg;</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L78"><a class="no" href="#src-gcore-global-manager-cpp-L78">78</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L79"><a class="no" href="#src-gcore-global-manager-cpp-L79">79</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L80"><a class="no" href="#src-gcore-global-manager-cpp-L80">80</a><span class="src">WorldConfig GlobalManager::world_config() <span class="kw">const</span> {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L81"><a class="no" href="#src-gcore-global-manager-cpp-L81">81</a><span class="src">    <span class="kw">auto</span> v = root.view&lt;<span class="kw">const</span> WorldConfig&gt;();</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L82"><a class="no" href="#src-gcore-global-manager-cpp-L82">82</a><span class="src">    <span class="kw">if</span> (v.empty()) <span class="kw">return</span> WorldConfig{};</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L83"><a class="no" href="#src-gcore-global-manager-cpp-L83">83</a><span class="src">    <span class="kw">return</span> v.get&lt;<span class="kw">const</span> WorldConfig&gt;(v.front());</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L84"><a class="no" href="#src-gcore-global-manager-cpp-L84">84</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L85"><a class="no" href="#src-gcore-global-manager-cpp-L85">85</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L86"><a class="no" href="#src-gcore-global-manager-cpp-L86">86</a><span class="src"><span class="kw">void</span> GlobalManager::add_zone_system(ZoneSystem sys) {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L87"><a class="no" href="#src-gcore-global-manager-cpp-L87">87</a><span class="src">    zone_systems_.push_back(std::move(sys));</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L88"><a class="no" href="#src-gcore-global-manager-cpp-L88">88</a><span class="src">}</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L89"><a class="no" href="#src-gcore-global-manager-cpp-L89">89</a><span class="src"> </span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L90"><a class="no" href="#src-gcore-global-manager-cpp-L90">90</a><span class="src"><span class="kw">void</span> GlobalManager::tick() {</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L91"><a class="no" href="#src-gcore-global-manager-cpp-L91">91</a><span class="src">    <span class="kw">for</span> (<span class="kw">auto</span>&amp; [key, reg] : loaded_)</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L92"><a class="no" href="#src-gcore-global-manager-cpp-L92">92</a><span class="src">        <span class="kw">for</span> (<span class="kw">auto</span>&amp; sys : zone_systems_)</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L93"><a class="no" href="#src-gcore-global-manager-cpp-L93">93</a><span class="src">            sys(*reg);</span></div>
+<div class="line" id="src-gcore-global-manager-cpp-L94"><a class="no" href="#src-gcore-global-manager-cpp-L94">94</a><span class="src">}</span></div>
+  </div>
+</section>
+<nav class="pager"><a href="04-serialize.html">← 第 4 站 serialize/ — 存讀檔管線</a><a href="06-systems.html">第 6 站 systems/movement.h — system 的樣板 →</a></nav>
+
+<footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python3 build.py</code> 即同步。</footer>
+</body>
+</html>

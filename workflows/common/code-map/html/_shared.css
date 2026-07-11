@@ -1,0 +1,63 @@
+/* medps 程式碼導覽共用樣式（build.py 一併維護） */
+:root {
+  --bg: #ffffff; --fg: #1a1a1a; --dim: #6b7280;
+  --card: #f6f7f9; --border: #e2e5ea; --accent: #2563eb;
+  --code-bg: #f6f7f9; --ln: #9ca3af;
+  --kw: #7c3aed; --cm: #16793c; --st: #b45309; --nu: #0e7490; --pp: #be185d;
+  --hero: #eef4ff; --quiz: #fff7e6; --quiz-border: #f0c36d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --fg: #e5e7eb; --dim: #9ca3af;
+    --card: #1a1f26; --border: #2a313b; --accent: #7aa2ff;
+    --code-bg: #161b22; --ln: #4b5563;
+    --kw: #c4a7ff; --cm: #7ecb92; --st: #e5b567; --nu: #67c5dc; --pp: #f38bb0;
+    --hero: #16202f; --quiz: #2a2416; --quiz-border: #6b5a2e;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; max-width: 62rem; padding: 2rem 1.25rem 4rem;
+  background: var(--bg); color: var(--fg);
+  font: 16px/1.75 -apple-system, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+h1 { font-size: 1.7rem; margin: .5rem 0; }
+h2 { font-size: 1.2rem; margin: 2rem 0 .6rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+h3 { font-size: 1rem; margin: 1.2rem 0 .5rem; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: "JetBrains Mono", Consolas, monospace; font-size: .92em;
+       background: var(--code-bg); padding: .1em .3em; border-radius: 4px; }
+.meta, .dim { color: var(--dim); font-size: .9rem; }
+.crumb { margin-bottom: 1rem; }
+.hero { background: var(--hero); border: 1px solid var(--border);
+        border-radius: 10px; padding: 1rem 1.2rem; margin: 1rem 0; }
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .8rem 0; }
+.flow .box { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+             padding: .5rem .9rem; text-align: center; line-height: 1.4; }
+.flow .arrow { color: var(--dim); font-size: .85rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .8rem; }
+.card { display: block; background: var(--card); border: 1px solid var(--border);
+        border-radius: 10px; padding: .9rem 1rem; color: var(--fg); }
+.card:hover { border-color: var(--accent); text-decoration: none; }
+.card h3 { margin: 0 0 .4rem; color: var(--accent); }
+.card p { margin: .2rem 0; font-size: .92rem; }
+.points li { margin: .35rem 0; }
+.loc { font-family: Consolas, monospace; font-size: .85em; white-space: nowrap; }
+.quiz { background: var(--quiz); border: 1px solid var(--quiz-border);
+        border-radius: 8px; padding: .7rem 1rem; margin: 1rem 0; }
+.file h3 { display: flex; flex-wrap: wrap; gap: .6rem; align-items: baseline; }
+.code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+        padding: .6rem 0; overflow-x: auto; margin: .4rem 0 1.6rem;
+        font: 13px/1.55 "JetBrains Mono", Consolas, monospace; }
+.code .line { display: flex; white-space: pre; }
+.code .line:target { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.code .no { flex: 0 0 3.2em; text-align: right; padding-right: 1em; color: var(--ln);
+            user-select: none; }
+.code .src { flex: 1; padding-right: 1em; }
+.kw { color: var(--kw); } .cm { color: var(--cm); } .st { color: var(--st); }
+.nu { color: var(--nu); } .pp { color: var(--pp); }
+.pager { display: flex; justify-content: space-between; gap: 1rem;
+         margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+footer { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1rem;
+         color: var(--dim); font-size: .85rem; }
