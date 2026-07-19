@@ -327,5 +327,5 @@ using AllComponents = entt::type_list<Position, Velocity, Owner /* , ... */>;
 ## 參考
 
 - EnTT 官方文件(對應 3.x):https://github.com/skypjack/entt/wiki
-- 本專案序列化搭配:`others/cereal_tutorial.md`
+- 本專案序列化搭配:`references/cereal_tutorial.md`
 - 核心世界結構設計:`work/design/zone_layers.md`

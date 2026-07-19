@@ -214,7 +214,7 @@ in(shape);    // 自動用 Circle 建構
 
 ## 6. 搭配 EnTT snapshot（本專案核心用途）
 
-cereal 作為 EnTT snapshot 的位元格式層,透過 `others/entt_tutorial.md` §7.2 的 adapter 串接。
+cereal 作為 EnTT snapshot 的位元格式層,透過 `references/entt_tutorial.md` §7.2 的 adapter 串接。
 完整流程(以 `std::stringstream` 為例):
 
 ```cpp
@@ -351,5 +351,5 @@ int main() {
 ## 參考
 
 - cereal 官方文件:https://uscilab.github.io/cereal/
-- 本專案 EnTT 搭配:`others/entt_tutorial.md`（§7 snapshot + adapter）
+- 本專案 EnTT 搭配:`references/entt_tutorial.md`（§7 snapshot + adapter）
 - 核心世界結構設計:`work/design/zone_layers.md`

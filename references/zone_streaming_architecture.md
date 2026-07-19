@@ -169,8 +169,8 @@ gm2.unload(some_region_key);                   // 離開時卸載
 
 ## 參考
 
-- 序列化機制（snapshot + cereal）：`others/entt_tutorial.md` §7、`others/cereal_tutorial.md`
-- 新增 component / system：`others/how_to_add_component_and_system.md`
+- 序列化機制（snapshot + cereal）：`references/entt_tutorial.md` §7、`references/cereal_tutorial.md`
+- 新增 component / system：`references/how_to_add_component_and_system.md`
 - 程式碼：`src/gcore/global_manager.{h,cpp}`、`src/gcore/zone_key.h`、`src/gcore/serialize/`、`src/gcore/components/`
 - 測試：`test/src/main.cpp`
 </content>

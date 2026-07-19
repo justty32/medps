@@ -55,7 +55,7 @@ using AllComponents = entt::type_list<
 
 ## 新增 System
 
-回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `others/entt_tutorial.md` §4)。本專案的 system 簽名固定:
+回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `references/entt_tutorial.md` §4)。本專案的 system 簽名固定:
 
 | 種類 | 簽名 | 跑在哪 |
 |---|---|---|
@@ -185,9 +185,9 @@ static bool test_cooldown_ticks_down() {
 
 ## 參考
 
-- EnTT 基礎(view / system / entity):`others/entt_tutorial.md`
-- cereal 序列化:`others/cereal_tutorial.md`
-- zone / registry / tick 架構全貌:`others/zone_streaming_architecture.md`
+- EnTT 基礎(view / system / entity):`references/entt_tutorial.md`
+- cereal 序列化:`references/cereal_tutorial.md`
+- zone / registry / tick 架構全貌:`references/zone_streaming_architecture.md`
 - 實際範例:`src/gcore/systems/movement.h`、`src/gcore/components/`
 - component 型別清單:`src/gcore/serialize/all_components.h`
 - 現有測試:`test/src/main.cpp`

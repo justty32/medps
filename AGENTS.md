@@ -11,6 +11,7 @@
 
 ## 先讀哪裡
 
+- 想看專案長怎樣、頂層有哪些目錄 → [INDEX.md](INDEX.md)：repo 結構地圖。
 - 使用者要你動手做某件事 → [WORKFLOWS.md](WORKFLOWS.md)：依意圖派發到對應工作流。
 - 碰原始碼 → 先讀 [workflows/common/conventions.md](workflows/common/conventions.md)，再讀 [CODE_MAP](workflows/common/code-map/CODE_MAP.md)。
 - 使用者親改了程式碼或留了 `// DAVID:` 註解 → [workflows/resync.md](workflows/resync.md)。

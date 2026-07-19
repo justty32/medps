@@ -199,7 +199,7 @@ windows.release.x86_64 = "res://bin/medp_gdext.dll"
 
 ## 參考
 
-- zone / 核心架構:`others/zone_streaming_architecture.md`
-- 新增 component / system:`others/how_to_add_component_and_system.md`
+- zone / 核心架構:`references/zone_streaming_architecture.md`
+- 新增 component / system:`references/how_to_add_component_and_system.md`
 - 程式碼:`src/gbind/`、`CMakeLists.txt`(MEDP_BUILD_GDEXTENSION 區塊)
 - godot-cpp checkout:`C:\code\mine\pas\projects\godot-cpp`(target Godot 4.6)

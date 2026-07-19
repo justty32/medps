@@ -48,9 +48,3 @@ analysis/research → create 或 patch 或 roadmap/spec
 
 - open/in-flight 進度 → [SESSION-LOG.md](SESSION-LOG.md)
 - 等使用者親自做/驗證 → [WAIT_USER.md](WAIT_USER.md)
-
-## 維護
-
-- 導入既有 repo → [ADOPTION.md](ADOPTION.md)
-- 定期清理/刪除過時流程 → [MAINTENANCE.md](MAINTENANCE.md)
-- 可選 agent commands → [commands/README.md](commands/README.md)
