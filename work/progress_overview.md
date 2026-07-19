@@ -1,106 +1,64 @@
-# medps 進度總覽（白話版）
+# medps 進度總覽
 
-> 寫給專案作者快速回顧用。日期：2026-06-21
+> 最後更新：2026-07-19
 
-## 一句話總結
+## 一句話
 
-**medps 目前是一個「能跑起來的遊戲核心骨架」**：地圖怎麼分層、實體（entity）怎麼存、存檔讀檔怎麼運作、遊戲每一回合（tick）怎麼推進——這些**地基都打好了，而且有測試保證它不會壞**。但真正的「遊戲玩法」（種族、宗教、戰鬥、外交等）**還沒開始寫**。
+**medps** 是奇幻 4X 策略遊戲的 C++20 後端函式庫（`medp`），前端預計用 Godot 4 GDExtension。
+目前處於核心骨架完成階段——世界結構、ECS 基建、存讀檔、Zone 生命週期管理都已穩固，
+但真正的遊戲內容（種族、宗教、戰鬥、外交等）還沒開始寫。
 
----
+## 已落地（地基層）
 
-## 現在做到哪了？
+| 項目 | 狀態 |
+|------|------|
+| **三層世界結構**（World/Region/Area + root） | ✅ 定案實作，`zone_key.h` 全域定址 |
+| **ZoneKey 座標系統** | 64-bit 打包（ZoneType:16\|x:16\|y:16\|z:16），巢狀換算由整除推導，不需額外索引 |
+| **ECS 核心**（EnTT） | 每 zone 一個 `entt::registry`，root 永久存活，其餘按需載入 |
+| **已有元件** | ZoneMeta（身份）、Position、Velocity、Blocking、AreaTerrain（稠密地形網格）、WorldConfig |
+| **移動系統** | per-zone 系統範例：有 Velocity 的 entity 每 tick 走一步 |
+| **序列化** | EnTT snapshot + cereal（PortableBinary），`all_components.h` 是元件清單唯一來源 |
+| **ZoneStore 抽象** | 預設 `FolderZoneStore`（一 zone 一檔），可抽換後端 |
+| **Zone 生命週期** | create/load/unload/tick/save_all/load_root 完整 |
+| **Godot 接線驗證** | smoke-test 證明前端能呼叫後端 |
+| **測試** | 16 項自動化測試全綠 |
 
-可以把專案想成蓋房子。目前狀態是：
+## 設計基礎
 
-- ✅ **地基 + 水電管線完成**：資料怎麼存、怎麼讀、怎麼定位，全部通了
-- ✅ **有驗收標準**：16 項測試全綠，確保地基不會悄悄裂掉
-- ✅ **預留了對外接口**：跟 Godot（畫面引擎）的接線已經接通、能通電（只是還沒接燈具）
-- ⬜ **房間、家具（實際遊戲內容）**：還沒蓋
-
-剛完成的一波工作是「**精簡重構**」——把之前過度設計的部分（chunk 串流、跨 zone 索引那些）砍掉，讓地基更乾淨好維護。
-
----
-
-## 已經完成的項目（清單）
-
-| 項目 | 做了什麼 | 白話解釋 |
-|---|---|---|
-| **地圖分層編碼** (`zone_key.h`) | 用一個 64 位元數字打包「哪一層地圖 + 座標」 | 給地圖上每個格子一個全世界唯一的門牌號 |
-| **三層世界結構** | World（世界）→ Region（區域）→ Area（小地塊），外加地下/地面/天空三個垂直層 | 像 Google 地圖能放大縮小：國家→城市→街道 |
-| **實體元件系統 (ECS)** | 用 EnTT 函式庫，每個東西 = 一堆「資料元件」的組合 | 角色 = 位置 + 速度 + 阻擋…用拼積木的方式組裝 |
-| **已有的元件** | 位置、速度、地形、阻擋、zone 身分、世界設定 | 描述「東西在哪、怎麼動、地是什麼、能不能走過去」 |
-| **移動系統** | 每回合讓有速度的東西走一步 | 第一個「會動」的範例系統 |
-| **存檔 / 讀檔** | 把整個遊戲世界轉成檔案、再讀回來 | 用 cereal 函式庫，跨平台二進位格式 |
-| **Zone 生命週期管理** | 地圖按需載入、不用時卸載省記憶體 | 玩家走到哪才載入那塊地圖 |
-| **存檔後端可抽換** | 目前用「一個 zone 一個檔案」的資料夾方式 | 之後想換成資料庫也不用改其他程式 |
-| **Godot 接線驗證** | 一個 smoke-test 類別，證明前端能呼叫後端 | 確認「畫面引擎 ↔ 遊戲核心」這條線是通的 |
-| **測試套件** | 16 項自動化測試 | 每次改動都能快速確認沒弄壞東西 |
-
----
-
-## 整個專案的架構（函數層面）
-
-分成幾個大模組，由上往下管：
-
-### 1. `GlobalManager` — 總管家（最核心）
-管理整個遊戲世界的生命週期。你主要會跟它打交道：
-
-- `init_world(x, y, z)` — 開新遊戲、設定世界大小
-- `create(key, parent)` — 建立一塊新地圖
-- `load(key)` / `unload(key)` — 載入 / 卸載某塊地圖
-- `add_zone_system(fn)` — 註冊「每回合要做的事」
-- `tick()` — 推進一回合（對每塊已載入地圖跑所有系統）
-- `save_all()` / `load_root()` — 整局存檔 / 開局讀檔
-
-### 2. `zone_key.h` — 地圖門牌系統（基礎）
-- `make_zone_key(type, x, y, z)` — 組出門牌號
-- `world_key()` / `region_key()` / `area_key()` — 各層的快捷產生器
-- `parent_of(key)` — 找出上一層（小地塊 → 區域 → 世界 → 根）
-
-### 3. `components/` — 資料元件（積木）
-純資料結構：`Position`、`Velocity`、`AreaTerrain`（地形）、`Blocking`（阻擋）、`ZoneMeta`（地圖身分）、`WorldConfig`（世界設定）
-
-### 4. `systems/` — 系統（行為）
-吃一個地圖、對裡面的東西做事。目前只有 `movement()`（移動）。
-> 未來的戰鬥、生產、AI 都會是這種「系統」函數。
-
-### 5. `serialize/` — 存讀檔機制
-- `all_components.h` — **所有元件的總清單**（新增元件必須登記在這）
-- `zone_io.h` — 一塊地圖 ↔ 位元組 的轉換（`save` / `load`）
-- `zone_store.h` — 決定檔案存哪、怎麼存（`FolderZoneStore`）
-- `entt_cereal_archive.h` — 接通 EnTT 與 cereal 兩個函式庫的橋
-
-### 6. `util/` — 工具
-- `tdarray.hpp` — 二維陣列（拿來存地形格子）
-- `mydef.h` — 一些編譯期巨集
-
-### 7. `gbind/` — Godot 接口（薄殼）
-- `MedpCore::version()` — 目前只是測試接線用的範例
-
----
-
-## 資料怎麼流動（一張圖）
+### 世界結構（三層 + root）
 
 ```
-開新遊戲   gm.init_world() → 設定世界大小（存在 root）
-   │
-建地圖     gm.create(key) → 生出一塊地圖，塞進角色、地形
-   │
-遊戲迴圈   gm.tick() → 每回合對每塊地圖跑所有系統（如移動）
-   │
-存檔       gm.save_all() → 每塊地圖轉成 .bin 檔
-   │
-讀檔       gm.load_root() → 讀回世界，子地圖之後按需載入
+root（全局實體：神祇、家族、文明，永久存活）
+  └ World 層（200×200，純回合，一格≈數公里）
+       └ Region 層（15×15，半即時/WeGo，一格≈數十公尺）
+            └ Area 層（250×250，即時/JRPG 回合，一格≈公尺）
 ```
 
----
+- 嚴格巢狀：1 World tile = 1 Region map；1 Region tile = 1 Area map
+- 所有三層共用同一套 `entt::registry` + `GlobalManager` 機制，只靠 `ZoneType` 區分
+- z 軸：三層共用（Underground=-1 / Ground=0 / Sky=+1），不同 z 為不同 zone
 
-## 下一步可以做什麼（建議方向）
+### ZoneKey 座標系統要點
 
-地基已穩，接下來是「往上蓋」：
+- `ZoneKey(uint64)` = `ZoneType:16 | x:16 | y:16 | z:16`
+- 每層 (x,y) = 該 zone 在父層全域 tile 網格的座標
+- parent 由整除推回（`parent_of()`），不需額外索引
+- `MAX_WORLD_DIM = 2184`（int16 上限 / REGION_DIM），預設 `WORLD_DIM_DEFAULT = 200`
+- world_dim 是 per-save runtime 設定，存在 `WorldConfig`，不是編譯期常數
 
-1. **加入更多遊戲元件與系統**（種族、人口、資源…）—— 純加法，不太會動到地基
-2. **真正打通 Godot 前端**—— 讓 `gbind` 不只是 smoke-test，而是能傳真正的地圖/實體資料給畫面
-3. **設計跨 zone 的互動機制**—— 目前系統只在單一地圖內跑，NPC 跨地圖移動、戰鬥還沒有
+### 全域設計取捨
 
-> 注意：每次新增一種元件，記得**同步更新 `serialize/all_components.h` 的清單**，否則存檔會漏掉它。
+1. **一切皆 zone**：三層共用同一套機制，只靠 ZoneType tag 和屬性區分（ToME4 驗證過的模式）
+2. **絕不全載**：預設 world_dim=200 時最多 900 萬個 Area，永遠不可能全載入。記憶體只跟已載入數成正比
+3. **一個 zone = 一個 `entt::registry`**，root 永久存活，子 zone 按需 load/unload
+4. **一 zone 一檔**：`FolderZoneStore` 預設後端，路徑由 key 推導，不另存全域清單
+5. **Area 地形是稠密網格不是 entity**：`AreaTerrain` 是掛在單例 entity 的 `tdarray<Tile>`，不走 per-tile entity
+6. **存檔：cereal 序列化整個 registry**，新增 component 務必登記 `all_components.h`
+7. **Ruleset（規則庫）process-resident**，不進存檔；system 透過 `registry.ctx()` 取得
+
+### 關鍵 gotcha
+
+- `all_components.h` 是序列化唯一來源——新增/刪除 component 忘記改它，存檔會悄悄漏掉
+- `AreaTerrain` 不能放 `registry.ctx()`（zone_io 不序列化 ctx），要掛在 entity 上走 snapshot
+- 新建的 zone 必須有一個帶 `ZoneMeta` 的 placeholder entity，否則 `orphans()` 會清空
+- WorldConfig 是 root 上的 singleton component，隨 root 存檔——world_dim 一經決定整局不可改（被烤進 ZoneKey 座標語意）
