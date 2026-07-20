@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>medps 文件彙整</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --card: #ffffff;
+    --ink: #1f2328;
+    --muted: #656d76;
+    --accent: #7b3fe4;
+    --border: #e4e4e7;
+    --tag: #f0ebfb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.65;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  header h1 { font-size: 2rem; margin: 0 0 6px; }
+  header p { color: var(--muted); margin: 0 0 4px; }
+  .meta { font-size: 0.85rem; color: var(--muted); }
+  section { margin-top: 40px; }
+  h2 {
+    font-size: 1.25rem;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 6px;
+    display: inline-block;
+    margin: 0 0 4px;
+  }
+  .section-desc { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; }
+  .grid { display: grid; gap: 14px; }
+  @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: box-shadow .15s, transform .15s, border-color .15s;
+  }
+  .card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    transform: translateY(-2px);
+    border-color: var(--accent);
+  }
+  .card h3 { margin: 0 0 6px; font-size: 1.02rem; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+  .card .path { display: block; margin-top: 10px; font-family: ui-monospace, "Consolas", monospace; font-size: 0.72rem; color: var(--accent); }
+  .wide { grid-column: 1 / -1; }
+  .tag {
+    display: inline-block;
+    background: var(--tag);
+    color: var(--accent);
+    font-size: 0.72rem;
+    padding: 1px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.82rem; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>medps 文件彙整</h1>
+    <p>奇幻 4X 策略遊戲的 C++20 後端函式庫（<code>medp</code>）——所有內容文件的入口。</p>
+    <p class="meta">路由檔（AGENTS / WORKFLOWS / INDEX）與工作流 <code>workflows/</code> 仍在 repo 根，非本頁範圍。</p>
+  </header>
+
+  <section>
+    <h2>進度總覽</h2>
+    <p class="section-desc">想快速回顧專案現況，先看這裡。</p>
+    <div class="grid">
+      <a class="card wide" href="work/progress_overview.md">
+        <h3>medps 進度總覽</h3>
+        <p>一句話定位、已落地的地基層、尚未開工的遊戲內容——白話進度快照。</p>
+        <span class="path">work/progress_overview.md</span>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <h2>設計與架構<span class="tag">work/</span></h2>
+    <p class="section-desc">已拍板的世界結構與核心框架設計；重寫階段的權威來源。</p>
+    <div class="grid">
+      <a class="card" href="work/design/zone_layers.md">
+        <h3>世界結構：三層 zone + root</h3>
+        <p>遊戲定位與三層 zone（+ root）總表：圖尺寸、格尺度、時間模型、數量級。</p>
+        <span class="path">work/design/zone_layers.md</span>
+      </a>
+      <a class="card" href="work/design/lifecycle.md">
+        <h3>生命週期與分層</h3>
+        <p>Ruleset（規則庫，常駐）與 GlobalManager（世界狀態，可重建）兩個 scope 的界線。</p>
+        <span class="path">work/design/lifecycle.md</span>
+      </a>
+      <a class="card wide" href="work/architecture/gcore_overview.md">
+        <h3>gcore 逐檔導覽</h3>
+        <p>遊戲核心框架（EnTT + cereal）的全域心智模型與依賴方向：zone = 一個 registry。</p>
+        <span class="path">work/architecture/gcore_overview.md</span>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <h2>外部庫教學與 How-to<span class="tag">references/</span></h2>
+    <p class="section-desc">第三方庫用法與實作流程，皆以本專案的實際用法為主。</p>
+    <div class="grid">
+      <a class="card" href="references/entt_tutorial.md">
+        <h3>EnTT 教學（medps 版）</h3>
+        <p>ECS 概念與 EnTT v3.16.0 在本專案的用法（single-header amalgamation）。</p>
+        <span class="path">references/entt_tutorial.md</span>
+      </a>
+      <a class="card" href="references/cereal_tutorial.md">
+        <h3>cereal 教學（medps 版）</h3>
+        <p>以 cereal v1.3.2 取代 BinFSR 的序列化用法，全 header-only。</p>
+        <span class="path">references/cereal_tutorial.md</span>
+      </a>
+      <a class="card" href="references/zone_streaming_architecture.md">
+        <h3>Zone / Registry 架構教學</h3>
+        <p>多 registry / zone 架構：GlobalManager、ZoneKey、path 推導、per-zone system、整局存讀。</p>
+        <span class="path">references/zone_streaming_architecture.md</span>
+      </a>
+      <a class="card" href="references/how_to_add_component_and_system.md">
+        <h3>如何新增 Component 與 System</h3>
+        <p>走一遍新增 component 與 per-zone system 的實際流程（含 all_components.h 登記）。</p>
+        <span class="path">references/how_to_add_component_and_system.md</span>
+      </a>
+      <a class="card wide" href="references/godot_gdextension_setup.md">
+        <h3>Godot 4 GDExtension 接入教學</h3>
+        <p>把純 C++ 核心接上 Godot 4，並新增暴露給 GDScript 的 facade（核心零 godot）。</p>
+        <span class="path">references/godot_gdextension_setup.md</span>
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <p>本頁彙整 <code>docs/</code> 內容文件。純文字說明見 <a href="README.md">README.md</a>；repo 結構地圖見 <a href="../INDEX.md">INDEX.md</a>。</p>
+    <p>重寫前的舊原型碼在 <code>../projects/archived/</code>（已凍結，非源碼）。</p>
+  </footer>
+</div>
+</body>
+</html>
