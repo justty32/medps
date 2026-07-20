@@ -16,7 +16,7 @@
 - 碰原始碼 → 先讀 [workflows/common/conventions.md](workflows/common/conventions.md)，再讀 [CODE_MAP](workflows/common/code-map/CODE_MAP.md)。
 - 使用者親改了程式碼或留了 `// DAVID:` 註解 → [workflows/resync.md](workflows/resync.md)。
 - 人要重讀程式碼 → [CODE_TOUR](workflows/common/code-map/CODE_TOUR.md)（線性導讀）；想快速回顧進度 → [docs/work/progress_overview.md](docs/work/progress_overview.md)。
-- 既有設計/分析文檔 → `docs/`（[docs/README.md](docs/README.md)：work 設計架構、references 庫教學、archive 重寫前原型）。
+- 既有設計/分析文檔 → `docs/`（[docs/README.md](docs/README.md)：work 設計架構、references 庫教學）；重寫前原型在 `projects/archived/`。
 
 ## Always-on 鐵律
 
@@ -28,7 +28,6 @@
 - 不 revert 使用者或其他 agent 的未確認變更；遇到衝突先停下說明。
 - 程式碼中的 `// DAVID:` 註解是使用者指令，看到就優先處理；`// DAVID_WRITE:` 區塊是使用者親寫碼，不改寫。協定見 [workflows/common/conventions.md](workflows/common/conventions.md)。
 - 完成非微小變更後，在 [WAIT_USER.md](WAIT_USER.md) 排「待過目」項（路徑:行號 + 一句看點）。
-- 小事可以跳流程；完整規則見 [PRINCIPLES.md](PRINCIPLES.md)。
 - 非微小工作先定義 `Done when:`。
 - 需要使用者親自驗證、外部環境、權限、實機操作時，記到 [WAIT_USER.md](WAIT_USER.md)。
 - 跨 session 的 open 狀態記到 [SESSION-LOG.md](SESSION-LOG.md) 或對應工作流的 `session-log.md`。
