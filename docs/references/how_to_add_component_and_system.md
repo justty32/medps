@@ -1,16 +1,16 @@
 # 如何新增 Component 與 System
 
 > 本文走一遍在 medps 新增 component 與 per-zone system 的實際流程。
-> 對應程式碼:`src/gcore/components/`、`src/gcore/systems/`、`src/gcore/serialize/all_components.h`、`src/gcore/global_manager.{h,cpp}`。
+> 對應程式碼:`projects/medp/src/gcore/components/`、`projects/medp/src/gcore/systems/`、`projects/medp/src/gcore/serialize/all_components.h`、`projects/medp/src/gcore/global_manager.{h,cpp}`。
 
 ---
 
 ## 新增 Component
 
-### Step 1：在 `src/gcore/components/` 建 header
+### Step 1：在 `projects/medp/src/gcore/components/` 建 header
 
 ```cpp
-// src/gcore/components/skill.h
+// projects/medp/src/gcore/components/skill.h
 #pragma once
 #include <cstdint>
 
@@ -33,7 +33,7 @@ struct Skill {
 ### Step 2：在 `all_components.h` 登錄
 
 ```cpp
-// src/gcore/serialize/all_components.h
+// projects/medp/src/gcore/serialize/all_components.h
 #include "../components/skill.h"          // <-- 1. include
 
 using AllComponents = entt::type_list<
@@ -55,18 +55,18 @@ using AllComponents = entt::type_list<
 
 ## 新增 System
 
-回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `references/entt_tutorial.md` §4)。本專案的 system 簽名固定:
+回顧:**system 就是一個查詢 component → 處理的普通函式**(見 `docs/references/entt_tutorial.md` §4)。本專案的 system 簽名固定:
 
 | 種類 | 簽名 | 跑在哪 |
 |---|---|---|
 | **per-zone** | `void(entt::registry&)` | `GlobalManager::tick()` 對每個 loaded zone 各跑一次 |
 
-### Step 1：在 `src/gcore/systems/` 建 header
+### Step 1：在 `projects/medp/src/gcore/systems/` 建 header
 
 per-zone system 簽名固定是 `void(entt::registry&)`,才能註冊給 `GlobalManager`:
 
 ```cpp
-// src/gcore/systems/skill_system.h
+// projects/medp/src/gcore/systems/skill_system.h
 #pragma once
 #include <entt.hpp>
 #include "../components/skill.h"
@@ -125,18 +125,18 @@ gm.add_zone_system([dt](entt::registry& reg){
 
 ```
 新增 component:
-  1. src/gcore/components/<name>.h         — struct + cereal serialize
-  2. src/gcore/serialize/all_components.h  — AllComponents 加一行(永遠加在最後)
+  1. projects/medp/src/gcore/components/<name>.h         — struct + cereal serialize
+  2. projects/medp/src/gcore/serialize/all_components.h  — AllComponents 加一行(永遠加在最後)
 
 新增 per-zone system:
-  1. src/gcore/systems/<name>.h            — void(entt::registry&) 自由函式
+  1. projects/medp/src/gcore/systems/<name>.h            — void(entt::registry&) 自由函式
   2. gm.add_zone_system(systems::<name>)   — 註冊(順序 = 執行順序)
      gm.tick()                             — 對每個 loaded zone 跑
 ```
 
 ---
 
-## 新增測試(參考 `test/src/main.cpp`)
+## 新增測試(參考 `projects/tests/src/main.cpp`)
 
 **component round-trip:**
 
@@ -185,9 +185,9 @@ static bool test_cooldown_ticks_down() {
 
 ## 參考
 
-- EnTT 基礎(view / system / entity):`references/entt_tutorial.md`
-- cereal 序列化:`references/cereal_tutorial.md`
-- zone / registry / tick 架構全貌:`references/zone_streaming_architecture.md`
-- 實際範例:`src/gcore/systems/movement.h`、`src/gcore/components/`
-- component 型別清單:`src/gcore/serialize/all_components.h`
-- 現有測試:`test/src/main.cpp`
+- EnTT 基礎(view / system / entity):`docs/references/entt_tutorial.md`
+- cereal 序列化:`docs/references/cereal_tutorial.md`
+- zone / registry / tick 架構全貌:`docs/references/zone_streaming_architecture.md`
+- 實際範例:`projects/medp/src/gcore/systems/movement.h`、`projects/medp/src/gcore/components/`
+- component 型別清單:`projects/medp/src/gcore/serialize/all_components.h`
+- 現有測試:`projects/tests/src/main.cpp`

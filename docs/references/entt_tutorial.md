@@ -1,7 +1,7 @@
 # EnTT 教學（medps 版）
 
-> 對應版本:**EnTT v3.16.0**(已 pin,single header `include/entt.hpp`)。
-> 環境:C++20 / MSVC。範例直接以本專案的用法為主,核心世界結構設計見 `work/design/zone_layers.md`。
+> 對應版本:**EnTT v3.16.0**(已 pin,single header `projects/medp/include/entt.hpp`)。
+> 環境:C++20 / MSVC。範例直接以本專案的用法為主,核心世界結構設計見 `docs/work/design/zone_layers.md`。
 > 引入方式:`#include <entt.hpp>`(single-include amalgamation;不要混用 `extern/entt/src/`,以免版本不一致)。
 
 ---
@@ -83,7 +83,7 @@ registry.valid(e);              // e 還活著嗎?(銷毀後即失效)
 把 component 寫成**單純 aggregate**,利於 cereal 序列化與跨平台:
 
 ```cpp
-// src/gcore/components/position.h
+// projects/medp/src/gcore/components/position.h
 struct Position {
     float x{};
     float y{};
@@ -152,7 +152,7 @@ auto moving = registry.view<Position>(entt::exclude<Frozen>);
 本專案不把 system 做成 class,而是自由函式,直接吃所屬 zone 的 registry:
 
 ```cpp
-// src/gcore/systems/movement.h
+// projects/medp/src/gcore/systems/movement.h
 inline void movement_system(entt::registry &registry, float dt) {
     registry.view<Position, Velocity>().each(
         [dt](Position &pos, Velocity &vel) {
@@ -242,10 +242,10 @@ entt::snapshot_loader{registry}
 
 ### 7.2 cereal⇄EnTT 的 archive adapter
 
-EnTT 對 archive 的呼叫協定固定(size、entity、entity+component 三種),而 cereal **預設不序列化 enum**,所以 `entt::entity` 要顯式轉成底層整數。這個 adapter 是 EnTT 官方範例的標準寫法,放在 `src/gcore/serialize/`:
+EnTT 對 archive 的呼叫協定固定(size、entity、entity+component 三種),而 cereal **預設不序列化 enum**,所以 `entt::entity` 要顯式轉成底層整數。這個 adapter 是 EnTT 官方範例的標準寫法,放在 `projects/medp/src/gcore/serialize/`:
 
 ```cpp
-// src/gcore/serialize/entt_cereal_archive.h
+// projects/medp/src/gcore/serialize/entt_cereal_archive.h
 #include <entt.hpp>
 #include <cereal/archives/portable_binary.hpp>
 #include <type_traits>
@@ -295,7 +295,7 @@ struct input_archive {
 snapshot 的 save 與 load 必須列出**完全相同、相同順序**的 component。為避免漏列 / 順序不一致,用單一來源驅動兩邊:
 
 ```cpp
-// src/gcore/serialize/all_components.h
+// projects/medp/src/gcore/serialize/all_components.h
 using AllComponents = entt::type_list<Position, Velocity, Owner /* , ... */>;
 ```
 
@@ -327,5 +327,5 @@ using AllComponents = entt::type_list<Position, Velocity, Owner /* , ... */>;
 ## 參考
 
 - EnTT 官方文件(對應 3.x):https://github.com/skypjack/entt/wiki
-- 本專案序列化搭配:`references/cereal_tutorial.md`
-- 核心世界結構設計:`work/design/zone_layers.md`
+- 本專案序列化搭配:`docs/references/cereal_tutorial.md`
+- 核心世界結構設計:`docs/work/design/zone_layers.md`

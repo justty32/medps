@@ -8,15 +8,12 @@
 
 | 路徑 | 內容 |
 |------|------|
-| `src/` | 後端函式庫原始碼（`medp`）；程式碼導航見 [CODE_MAP](workflows/common/code-map/CODE_MAP.md)、線性導讀見 [CODE_TOUR](workflows/common/code-map/CODE_TOUR.md) |
-| `test/` | 測試；跑法見 [workflows/testing.md](workflows/testing.md) |
-| `data/` | 執行期資料（build 時複製到 `build/bin/data/`）|
-| `include/` | 第三方 header-only 庫（entt、cereal）——**不修改** |
+| `projects/` | 各獨立、平級的子專案（見下）|
+| `projects/medp/` | 後端函式庫（`medp`）：`src/` 原始碼、`include/` 第三方 header-only 庫（entt、cereal，**不修改**）、`data/` 執行期資料、`CMakeLists.txt`、`build/`（產出，不 commit）。程式碼導航見 [CODE_MAP](workflows/common/code-map/CODE_MAP.md)、線性導讀見 [CODE_TOUR](workflows/common/code-map/CODE_TOUR.md) |
+| `projects/tests/` | 測試（獨立專案）；跑法見 [workflows/testing.md](workflows/testing.md) |
+| `projects/archived/` | 重寫前的舊原型碼與草稿（非源碼，已凍結）|
 | `workflows/` | 開發工作流（入口見 [WORKFLOWS.md](WORKFLOWS.md)）|
-| `work/` | 既有設計/架構分析文檔（design、architecture、progress_overview）|
-| `notes/` | 設計草稿（`.js`/`.gd`/`.cpp` prototype，非源碼；前端草稿在 `notes/gd/`）|
-| `references/` | 外部庫教學與 how-to（entt、cereal、godot、component/system、zone streaming）|
-| `build/` | 產出目錄（不 commit）|
+| `docs/` | 專案文件（見 [docs/README.md](docs/README.md)）：`work/` 設計架構、`references/` 庫教學 |
 
 ## 工作流
 

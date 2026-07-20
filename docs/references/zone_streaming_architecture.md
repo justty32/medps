@@ -1,7 +1,7 @@
 # Zone / Registry 架構教學
 
 > 本文說明 medps 的多 registry / zone 架構：`GlobalManager`、`ZoneKey`、path 推導、per-zone system、整局存讀。
-> 對應程式碼：`src/gcore/global_manager.{h,cpp}`、`src/gcore/zone_key.h`、`src/gcore/components/`、`src/gcore/serialize/`。
+> 對應程式碼：`projects/medp/src/gcore/global_manager.{h,cpp}`、`projects/medp/src/gcore/zone_key.h`、`projects/medp/src/gcore/components/`、`projects/medp/src/gcore/serialize/`。
 
 ---
 
@@ -169,9 +169,9 @@ gm2.unload(some_region_key);                   // 離開時卸載
 
 ## 參考
 
-- 序列化機制（snapshot + cereal）：`references/entt_tutorial.md` §7、`references/cereal_tutorial.md`
-- 新增 component / system：`references/how_to_add_component_and_system.md`
-- 程式碼：`src/gcore/global_manager.{h,cpp}`、`src/gcore/zone_key.h`、`src/gcore/serialize/`、`src/gcore/components/`
-- 測試：`test/src/main.cpp`
+- 序列化機制（snapshot + cereal）：`docs/references/entt_tutorial.md` §7、`docs/references/cereal_tutorial.md`
+- 新增 component / system：`docs/references/how_to_add_component_and_system.md`
+- 程式碼：`projects/medp/src/gcore/global_manager.{h,cpp}`、`projects/medp/src/gcore/zone_key.h`、`projects/medp/src/gcore/serialize/`、`projects/medp/src/gcore/components/`
+- 測試：`projects/tests/src/main.cpp`
 </content>
 </invoke>

@@ -10,7 +10,8 @@
 
 - 2026-07-10：導入 workflow 組織形式（minimal adoption）；AGENTS.md 改為路由器、CLAUDE.md 改為薄入口、模組速查移入 CODE_MAP。
 - 2026-07-10：新增人用導讀 CODE_TOUR、resync 工作流（使用者親改接手）、DAVID 標記協定、WAIT_USER「待過目」佇列。
-- 地基階段已完成（zone 系統精簡重構落地，16/16 測試綠）；遊戲玩法內容尚未動工，候選方向見 [work/progress_overview.md](work/progress_overview.md) 末段。
+- 地基階段已完成（zone 系統精簡重構落地，16/16 測試綠）；遊戲玩法內容尚未動工，候選方向見 [docs/work/progress_overview.md](docs/work/progress_overview.md) 末段。
+- 2026-07-20：資料夾整理——文件併入 `docs/`、C++ 專案改為 `projects/` 下平級三專案（medp / tests / archived）；CMake 重接為兩個獨立專案（tests 自行 find/link medp_static），已用本機 MinGW（g++ 16.1）兩步建置實測 **16/16 綠**。
 
 ## 各工作流 session-log
 

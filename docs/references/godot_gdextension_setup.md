@@ -1,7 +1,7 @@
 # Godot 4 GDExtension 接入教學
 
 > 本文說明 medps 如何把純 C++ 核心接上 Godot 4(GDExtension),以及怎麼新增暴露給 GDScript 的 facade。
-> 對應程式碼:`src/gbind/`、`CMakeLists.txt` 的 `MEDP_BUILD_GDEXTENSION` 區塊。
+> 對應程式碼:`projects/medp/src/gbind/`、`projects/medp/CMakeLists.txt` 的 `MEDP_BUILD_GDEXTENSION` 區塊。
 > 已驗證環境:godot-cpp(target **Godot 4.6**)、C++20 / MSVC。
 
 ---
@@ -19,7 +19,7 @@
 ```
 
 - **核心**(`medp` / `medp_static`)**永遠不** `#include` godot-cpp。可獨立編譯、獨立測試(`medp_test.exe`)。
-- **facade**(`src/gbind/`)是唯一能 include godot-cpp 的地方,繼承 `godot::Object`/`RefCounted`/`Node`,呼叫核心 API,用 `_bind_methods` 暴露給 GDScript。
+- **facade**(`projects/medp/src/gbind/`)是唯一能 include godot-cpp 的地方,繼承 `godot::Object`/`RefCounted`/`Node`,呼叫核心 API,用 `_bind_methods` 暴露給 GDScript。
 - CMake 用 `list(FILTER src EXCLUDE REGEX "/gbind/")` 把 gbind 排除在核心 target 外,從建置層面保證核心不沾 godot。
 
 > 為何 facade 必須是薄殼:`godot::Object` 子類的記憶體配置走 Godot 引擎(`memnew`/`memdelete`),必須活在 Godot 進程內。所以模擬邏輯留在核心,facade 只做轉接。
@@ -32,7 +32,7 @@
 
 ```cmake
 # CMakeLists.txt — 預設 OFF,因為 godot-cpp 第一次 build 很慢
-option(MEDP_BUILD_GDEXTENSION "Build the Godot 4 GDExtension facade (src/gbind)" OFF)
+option(MEDP_BUILD_GDEXTENSION "Build the Godot 4 GDExtension facade (projects/medp/src/gbind)" OFF)
 if(MEDP_BUILD_GDEXTENSION)
     set(GODOT_CPP_DIR "C:/code/mine/pas/projects/godot-cpp"
         CACHE PATH "Path to the godot-cpp checkout")
@@ -48,7 +48,7 @@ endif()
 
 重點:
 - godot-cpp 的 CMake target 叫 **`godot-cpp`**(static lib)。`target_link_libraries(... godot-cpp)` 會自動帶上它的 include 路徑(含 build 時生成的 `gen/include/`)。
-- bindings **不在源碼樹**,是 configure/build 時由 `binding_generator.py` 生成到 `build/godot-cpp-build/gen/`。
+- bindings **不在源碼樹**,是 configure/build 時由 `binding_generator.py` 生成到 `projects/medp/build/godot-cpp-build/gen/`。
 - 換機器時改 `GODOT_CPP_DIR`(路徑寫死,這是已知的不可攜代價;要可攜就改 submodule)。
 
 ---
@@ -63,7 +63,7 @@ cmake -S . -B build -DMEDP_BUILD_GDEXTENSION=ON
 cmake --build build --target medp_gdext
 ```
 
-產出:`build/bin/medp_gdext.dll`。
+產出:`projects/medp/build/bin/medp_gdext.dll`。
 
 > 平常開發**不要**開這個 option——核心(`medp_test` 等)的 build 不需要 godot-cpp,開了只會拖慢。只在要更新 GDExtension 時才開。
 
@@ -74,7 +74,7 @@ cmake --build build --target medp_gdext
 ### 3-1. facade 類別
 
 ```cpp
-// src/gbind/medp_core.h
+// projects/medp/src/gbind/medp_core.h
 #pragma once
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -94,7 +94,7 @@ public:
 ```
 
 ```cpp
-// src/gbind/medp_core.cpp
+// projects/medp/src/gbind/medp_core.cpp
 #include "medp_core.h"
 using namespace godot;
 
@@ -113,7 +113,7 @@ String medp_gd::MedpCore::version() const {
 ### 3-2. 進入點 register_types
 
 ```cpp
-// src/gbind/register_types.cpp
+// projects/medp/src/gbind/register_types.cpp
 #include "register_types.h"
 #include "medp_core.h"
 #include <gdextension_interface.h>
@@ -148,7 +148,7 @@ GDExtensionBool GDE_EXPORT medp_library_init(
 ### 3-3. .gdextension 描述檔
 
 ```ini
-; src/gbind/medp.gdextension(範本;複製進 Godot 專案)
+; projects/medp/src/gbind/medp.gdextension(範本;複製進 Godot 專案)
 [configuration]
 entry_symbol = "medp_library_init"     ; 對應上面的 extern "C" 函式名
 compatibility_minimum = "4.6"
@@ -164,8 +164,8 @@ windows.release.x86_64 = "res://bin/medp_gdext.dll"
 ## 4. 在 Godot 裡載入並測試
 
 1. 建一個 **Godot 4.6** 專案。
-2. 把 `build/bin/medp_gdext.dll` 複製到專案的 `res://bin/`。
-3. 把 `src/gbind/medp.gdextension` 複製到 `res://medp.gdextension`。
+2. 把 `projects/medp/build/bin/medp_gdext.dll` 複製到專案的 `res://bin/`。
+3. 把 `projects/medp/src/gbind/medp.gdextension` 複製到 `res://medp.gdextension`。
 4. 重開專案(讓 Godot 載入 GDExtension)。
 5. GDScript 測試:
    ```gdscript
@@ -182,7 +182,7 @@ windows.release.x86_64 = "res://bin/medp_gdext.dll"
 2. 在 `_bind_methods()` 加 `ClassDB::bind_method(D_METHOD("名字", "參數名"...), &Class::method);`。
 
 **新增一個 class**:
-1. 建 `src/gbind/<name>.h/.cpp`,`GDCLASS(X, 基類)` + `_bind_methods`。
+1. 建 `projects/medp/src/gbind/<name>.h/.cpp`,`GDCLASS(X, 基類)` + `_bind_methods`。
 2. 在 `register_types.cpp` 的 `initialize_medp_module` 加 `GDREGISTER_CLASS(X);`。
 3. 重新 `cmake --build build --target medp_gdext`(gbind 用 GLOB,新檔自動納入;若 configure 後才加檔,重跑一次 configure)。
 
@@ -190,7 +190,7 @@ windows.release.x86_64 = "res://bin/medp_gdext.dll"
 
 ## 6. 驗證 / 排錯
 
-- **DLL 有沒有匯出進入點**:`dumpbin /exports build/bin/medp_gdext.dll` 找 `medp_library_init`(本專案已驗證有匯出)。找不到 → 檢查 `GDE_EXPORT` 與 `extern "C"`。
+- **DLL 有沒有匯出進入點**:`dumpbin /exports projects/medp/build/bin/medp_gdext.dll` 找 `medp_library_init`(本專案已驗證有匯出)。找不到 → 檢查 `GDE_EXPORT` 與 `extern "C"`。
 - **Godot 載入失敗**:多半是 `.gdextension` 的 `entry_symbol` 拼錯、`compatibility_minimum` 高於你的 Godot 版本、或 dll 路徑不對。
 - **核心被 godot 污染**:若核心 build 開始要 godot-cpp,檢查是不是有核心檔案 include 了 godot,或 gbind 沒被 GLOB 排除。核心測試應永遠能在不開 option 下 build + 跑。
 - **C++ 標準**:godot-cpp 是 C++17,我們的 C++20 可連結;facade 別用會與 godot-cpp header 衝突的 C++20 特性。
@@ -199,7 +199,7 @@ windows.release.x86_64 = "res://bin/medp_gdext.dll"
 
 ## 參考
 
-- zone / 核心架構:`references/zone_streaming_architecture.md`
-- 新增 component / system:`references/how_to_add_component_and_system.md`
-- 程式碼:`src/gbind/`、`CMakeLists.txt`(MEDP_BUILD_GDEXTENSION 區塊)
+- zone / 核心架構:`docs/references/zone_streaming_architecture.md`
+- 新增 component / system:`docs/references/how_to_add_component_and_system.md`
+- 程式碼:`projects/medp/src/gbind/`、`projects/medp/CMakeLists.txt`(MEDP_BUILD_GDEXTENSION 區塊)
 - godot-cpp checkout:`C:\code\mine\pas\projects\godot-cpp`(target Godot 4.6)

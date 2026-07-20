@@ -1,7 +1,7 @@
 # cereal 教學（medps 版）
 
-> 對應版本:**cereal v1.3.2**(已 vendor 至 `include/cereal/`)。
-> 環境:C++20 / MSVC。本文記錄本專案以 cereal 取代 BinFSR 的用法,核心世界結構設計見 `work/design/zone_layers.md`。
+> 對應版本:**cereal v1.3.2**(已 vendor 至 `projects/medp/include/cereal/`)。
+> 環境:C++20 / MSVC。本文記錄本專案以 cereal 取代 BinFSR 的用法,核心世界結構設計見 `docs/work/design/zone_layers.md`。
 > 引入方式:`#include <cereal/archives/portable_binary.hpp>` 等;**不需要編譯任何 .cpp**,cereal 全 header-only。
 
 ---
@@ -137,7 +137,7 @@ struct FactionData {
 ```
 
 其他常用的:`array.hpp`, `tuple.hpp`, `optional.hpp`, `variant.hpp`。
-全部清單在 `include/cereal/types/`。
+全部清單在 `projects/medp/include/cereal/types/`。
 
 ---
 
@@ -214,15 +214,15 @@ in(shape);    // 自動用 Circle 建構
 
 ## 6. 搭配 EnTT snapshot（本專案核心用途）
 
-cereal 作為 EnTT snapshot 的位元格式層,透過 `references/entt_tutorial.md` §7.2 的 adapter 串接。
+cereal 作為 EnTT snapshot 的位元格式層,透過 `docs/references/entt_tutorial.md` §7.2 的 adapter 串接。
 完整流程(以 `std::stringstream` 為例):
 
 ```cpp
 #include <sstream>
 #include <entt.hpp>
 #include <cereal/archives/portable_binary.hpp>
-#include "src/gcore/serialize/entt_cereal_archive.h"
-#include "src/gcore/serialize/all_components.h"  // AllComponents type_list
+#include "projects/medp/src/gcore/serialize/entt_cereal_archive.h"
+#include "projects/medp/src/gcore/serialize/all_components.h"  // AllComponents type_list
 
 // ---- 存（單一 zone 的 registry）----
 void save_zone(const entt::registry &registry, std::ostream &os) {
@@ -270,7 +270,7 @@ void load_zone(entt::registry &registry, std::istream &is) {
 
 ## 8. `tdarray<T>` 的序列化
 
-地圖等 grid 資料以 `tdarray<T>`(`src/gcore/util/tdarray.hpp`)承載,不進 registry,直接用 cereal 序列化:
+地圖等 grid 資料以 `tdarray<T>`(`projects/medp/src/gcore/util/tdarray.hpp`)承載,不進 registry,直接用 cereal 序列化:
 
 ```cpp
 template<typename T>
@@ -304,7 +304,7 @@ CEREAL_CLASS_VERSION(tdarray<Tile>, 1)
 ## 10. smoke test 範本（Phase 0 驗收用）
 
 ```cpp
-// test/src/smoke_cereal.cpp
+// projects/tests/src/smoke_cereal.cpp
 #include <sstream>
 #include <cassert>
 #include <entt.hpp>
@@ -351,5 +351,5 @@ int main() {
 ## 參考
 
 - cereal 官方文件:https://uscilab.github.io/cereal/
-- 本專案 EnTT 搭配:`references/entt_tutorial.md`（§7 snapshot + adapter）
-- 核心世界結構設計:`work/design/zone_layers.md`
+- 本專案 EnTT 搭配:`docs/references/entt_tutorial.md`（§7 snapshot + adapter）
+- 核心世界結構設計:`docs/work/design/zone_layers.md`

@@ -80,7 +80,7 @@ STATIONS = [
         "slug": "01-zone-key",
         "title": "第 1 站 zone_key.h — 座標語言",
         "tagline": "整個專案的「門牌系統」，其他所有檔案都建立在它的語意上。",
-        "files": ["src/gcore/zone_key.h"],
+        "files": ["projects/medp/src/gcore/zone_key.h"],
         "intro": [
             "一個 zone 用 64-bit 的 <code>ZoneKey</code> 全局定址：高 16 位是 "
             "<code>ZoneType</code>（同時代表樹深度），其餘三段 16 位是 x / y / z。"
@@ -106,7 +106,7 @@ STATIONS = [
         "slug": "02-util",
         "title": "第 2 站 util/ — 容器與巨集工具",
         "tagline": "tdarray：唯一的容器工具，row-major 2D 陣列；mydef：metaprogramming 巨集。",
-        "files": ["src/gcore/util/tdarray.hpp", "src/gcore/util/mydef.h"],
+        "files": ["projects/medp/src/gcore/util/tdarray.hpp", "projects/medp/src/gcore/util/mydef.h"],
         "intro": [
             "<code>tdarray&lt;T&gt;</code> 用單一 vector 打平存 2D 格網"
             "（索引 = x*sy + y），已 cereal 化，是 AreaTerrain 的底層容器。",
@@ -131,12 +131,12 @@ STATIONS = [
         "title": "第 3 站 components/ — 資料積木",
         "tagline": "六個 POD component；留意 WorldConfig（ROOT singleton）與 ZoneMeta（placeholder）。",
         "files": [
-            "src/gcore/components/zone_meta.h",
-            "src/gcore/components/world_config.h",
-            "src/gcore/components/area_terrain.h",
-            "src/gcore/components/blocking.h",
-            "src/gcore/components/position.h",
-            "src/gcore/components/velocity.h",
+            "projects/medp/src/gcore/components/zone_meta.h",
+            "projects/medp/src/gcore/components/world_config.h",
+            "projects/medp/src/gcore/components/area_terrain.h",
+            "projects/medp/src/gcore/components/blocking.h",
+            "projects/medp/src/gcore/components/position.h",
+            "projects/medp/src/gcore/components/velocity.h",
         ],
         "intro": [
             "全部是 POD aggregate + <code>serialize()</code> 成員；entity 之間的參照存 "
@@ -165,10 +165,10 @@ STATIONS = [
         "title": "第 4 站 serialize/ — 存讀檔管線",
         "tagline": "registry → snapshot → cereal 位元組 → ZoneStore 落盤；AllComponents 是唯一登記點。",
         "files": [
-            "src/gcore/serialize/all_components.h",
-            "src/gcore/serialize/entt_cereal_archive.h",
-            "src/gcore/serialize/zone_io.h",
-            "src/gcore/serialize/zone_store.h",
+            "projects/medp/src/gcore/serialize/all_components.h",
+            "projects/medp/src/gcore/serialize/entt_cereal_archive.h",
+            "projects/medp/src/gcore/serialize/zone_io.h",
+            "projects/medp/src/gcore/serialize/zone_store.h",
         ],
         "intro": [
             "分工：<code>zone_io</code> 負責 registry ↔ 位元組；<code>ZoneStore</code> "
@@ -196,7 +196,7 @@ STATIONS = [
         "slug": "05-global-manager",
         "title": "第 5 站 GlobalManager — 總管",
         "tagline": "把前四站接起來：管理 root + 已載入 zones，跑 tick，做整局存讀檔。",
-        "files": ["src/gcore/global_manager.h", "src/gcore/global_manager.cpp"],
+        "files": ["projects/medp/src/gcore/global_manager.h", "projects/medp/src/gcore/global_manager.cpp"],
         "intro": [
             "一個 zone = 一個 <code>entt::registry</code>，由 GlobalManager 集中管理；"
             "root 永久存活、放全局實體（陣營 / 神祇 / 具名角色），其餘 zones 按需載入卸載。",
@@ -222,7 +222,7 @@ STATIONS = [
         "slug": "06-systems",
         "title": "第 6 站 systems/movement.h — system 的樣板",
         "tagline": "所有未來 system 的形狀範本：自由函式、吃 entt::registry&、用 view 遍歷。",
-        "files": ["src/gcore/systems/movement.h"],
+        "files": ["projects/medp/src/gcore/systems/movement.h"],
         "intro": [
             "18 行示範「system 該長什麼樣」：簽章 <code>void(entt::registry&)</code>，"
             "因此可直接註冊為 GlobalManager 的 zone system，對每個已載入 zone 執行。",
@@ -236,12 +236,12 @@ STATIONS = [
     },
     {
         "slug": "07-tests",
-        "title": "第 7 站 test/src/main.cpp — 可執行的規格書",
+        "title": "第 7 站 projects/tests/src/main.cpp — 可執行的規格書",
         "tagline": "16 個 case，每個 test 就是一段「這功能該怎麼用」的示範。",
-        "files": ["test/src/main.cpp"],
+        "files": ["projects/tests/src/main.cpp"],
         "intro": [
             "改任何行為前先看對應 test 的期望。16 個 case 的總表在檔尾 main()。",
-            "跑法：<code>cmake --build build && ./build/bin/medp_test.linux.debug.64</code>"
+            "跑法：<code>cmake --build build && ./projects/medp/build/bin/medp_test.linux.debug.64</code>"
             "（詳見 workflows/testing.md）。",
         ],
         "points": [
@@ -258,12 +258,12 @@ STATIONS = [
     {
         "slug": "08-gbind",
         "title": "附錄 gbind/ — Godot GDExtension 接線",
-        "tagline": "目前只有 smoke-test facade，可略過；動它前讀 notes/gd/。",
+        "tagline": "目前只有 smoke-test facade，可略過；動它前讀 projects/archived/gd/。",
         "files": [
-            "src/gbind/medp_core.h",
-            "src/gbind/medp_core.cpp",
-            "src/gbind/register_types.h",
-            "src/gbind/register_types.cpp",
+            "projects/medp/src/gbind/medp_core.h",
+            "projects/medp/src/gbind/medp_core.cpp",
+            "projects/medp/src/gbind/register_types.h",
+            "projects/medp/src/gbind/register_types.cpp",
         ],
         "intro": [
             "驗證整條工具鏈（godot-cpp build → bindings → link medp_static → .so/.dll → "
@@ -457,7 +457,7 @@ registry → cereal 轉位元組 → <code>ZoneStore</code> 落盤；<code>tick(
   <li><a href="../CODE_TOUR.md">CODE_TOUR.md</a>——線性導讀（本導覽的 Markdown 真相層）</li>
   <li><a href="../CODE_MAP.md">CODE_MAP.md</a>——agent 修改前的查表</li>
   <li><a href="{REL_TO_ROOT}/AGENTS.md">AGENTS.md</a>——專案備忘與鐵律</li>
-  <li><a href="{REL_TO_ROOT}/work/progress_overview.md">work/progress_overview.md</a>——進度總覽</li>
+  <li><a href="{REL_TO_ROOT}/docs/work/progress_overview.md">docs/work/progress_overview.md</a>——進度總覽</li>
 </ul>
 """
     (HERE / "index.html").write_text(page("medps 程式碼導覽", body), encoding="utf-8")

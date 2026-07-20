@@ -47,7 +47,8 @@ add_library("${PROJ}_static" STATIC ${src})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_directories(${PROJ} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 
-add_subdirectory(test)
+# 測試現為平級獨立專案 projects/tests，自行 find/link 本專案的 medp_static，
+# 不再由此 add_subdirectory。
 
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" SYSTEM_NAME)
 string(TOLOWER "${CMAKE_BUILD_TYPE}" BUILD_TYPE)

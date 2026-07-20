@@ -1,6 +1,6 @@
 # gcore 逐檔導覽
 
-> 對象：`src/gcore/`（遊戲核心框架，EnTT + cereal）。最後更新：2026-07-19。
+> 對象：`projects/medp/src/gcore/`（遊戲核心框架，EnTT + cereal）。最後更新：2026-07-19。
 
 ## 全域心智模型
 
