@@ -21,7 +21,7 @@ idea → roadmap → spec → plan → feature-dev
 
 | 計畫 | 出計畫日期 | 對應 spec | 狀態 |
 |------|------------|-----------|------|
-| 無 | - | - | - |
+| [save-format-position-z](save-format-position-z.md) | 2026-07-22 | 無（設計已定，依 [tome4 報告](../../docs/work/design/tome4_recommendations.md) §2-A/§2-E-1） | 待使用者同意動工 |
 
 ## 何時不用
 

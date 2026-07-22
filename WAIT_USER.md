@@ -13,6 +13,9 @@
 
 ## Open
 
+- **待拍板** [workflows/specs/zone-addressing-lifecycle-design.md](workflows/specs/zone-addressing-lifecycle-design.md) — zone 定址＋生命週期設計 spec（報告 §2-D/§2-F 兩道 P0 設計題）。看點：§2 決策總表 12 條是否合你意；特別是四個爭點——目錄分桶提前到本輪、save_all 含 Ephemeral（checkpoint 語意）、`pinned` 執行期旗標、tick 重入禁令；§8 懸置清單是否可接受。拍板後才展開 plan。
+- **待同意動工** [workflows/plans/save-format-position-z.md](workflows/plans/save-format-position-z.md) — P0 三項的動工計畫（存檔 magic+version / Position 補 z / move_by 收口），設計已定、稽核已過，與 spec 拍板互不阻塞。看點：Task 1 的例外契約與檔案佈局註解、Task 3 的臨時 TU 驗證法（建置本身不覆蓋 movement.h）。你說開工就開工。
+- **待過目** [docs/work/design/tome4_recommendations.md](docs/work/design/tome4_recommendations.md) — ToME4 架構研讀→重寫建議報告（研讀 `C:\code\mine\modding_tome4` 語料，經三路對抗性覆核修訂）。看點：§2 的 P0 三項（Position 補 z、存檔版本欄位、生命週期策略）與 §4 落地順序是否合你意；step 0 指出**測試套件已隨重構斷裂、16 項基準失效**，這是下一步動工前的硬前置。
 - **待過目** 資料夾整理（對齊 `~/repo/workflows` 標準 + 你的 docs/src 分流）：內容文件 `work/`→`docs/work/`、`references/`→`docs/references/`；C++ 專案改為 `projects/` 下平級三專案 `projects/medp/`（原 `src`+`include`+`data`+`CMakeLists`）、`projects/tests/`（原 `test/`）、`projects/archived/`（原 `notes/` 重寫前原型）。全程 `git mv` 保留歷史；同步更新 AGENTS/INDEX/CODE_MAP/CODE_TOUR/references/dev-env/testing/.gitignore 的路徑與建置指令，並重生 html 導覽層。除 CMake 接線（見上）外零邏輯變更；未 commit。看點：`projects/` 三專案切分與 `docs/` 佈局是否合你意。
 - **待過目** 頂層文件整理（對齊 `~/repo/workflows` 乾淨 kernel）：刪除 4 個模板治理檔（`ADOPTION`/`INIT-QUESTIONS`/`MAINTENANCE`/`SYNC`，屬模板 repo 非本專案）、移除壞掉的 `commands/`（README 列的檔全不存在）、`others/`→`references/`（含 5 檔內部交叉引用）、新增 [INDEX.md](INDEX.md) repo 地圖並在 `AGENTS.md:14` 加入口。頂層 md 12→9。純文件、零原始碼變更，git 可全復原；未 commit。看點：INDEX.md 佈局是否符合你對頂層目錄的描述。
 - **待過目** `projects/medp/src/gcore/util/tdarray.hpp:10-27` — 補上全檔僅缺的註解：檔頭三條使用慣例（true=失敗、is_coor 座標、get/getptr/getval 差異），加上各函式家族短註；純註解、零邏輯變更，16 項測試全綠。
