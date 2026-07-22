@@ -9,69 +9,70 @@
 <body>
 
 <h1>medps 程式碼導覽</h1>
-<p class="meta">奇幻 4X 策略遊戲 C++20 後端（EnTT + cereal）· 核心約 1,300 行 ·
-照順序讀完約 1–1.5 小時</p>
+<p class="meta">奇幻 4X 策略遊戲 C++20 後端（EnTT + cereal）· 核心約 1,100 行 ·
+照順序讀完約 1 小時</p>
 
 <div class="hero">
-<b>全貌一句話：</b><code>GlobalManager</code> 管一堆 <code>entt::registry</code>
-（一個 zone 一個），zone 用 64-bit <code>ZoneKey</code> 定址，存讀檔 = snapshot 遍歷
-registry → cereal 轉位元組 → <code>ZoneStore</code> 落盤；<code>tick()</code>
-對每個已載入 zone 跑所有註冊的 system。
+<b>全貌一句話：</b><code>ZoneManager</code> 管一堆 <code>Zone</code>
+（一個 zone = 一個 <code>entt::registry</code> + 自帶多層 tile 地圖），zone id 是零語意的
+單調序號、由 <code>create_child</code> 配發；存讀檔 = 一 zone 一檔（zone_io 兩塊接合）＋
+<code>manifest.bin</code> 記 id 計數器；<code>tick()</code> 對每個已載入 zone（含 root）
+跑所有註冊的 system。
 </div>
 
 <h2>資料流</h2>
 <div class="flow">
   <div class="box">components/<br><span class="dim">POD 資料</span></div>
   <div class="arrow">掛在</div>
-  <div class="box">entt::registry<br><span class="dim">一個 zone 一個</span></div>
+  <div class="box">Zone<br><span class="dim">registry + layers</span></div>
   <div class="arrow">管理</div>
-  <div class="box">GlobalManager<br><span class="dim">root + loaded_ + tick</span></div>
+  <div class="box">ZoneManager<br><span class="dim">root + 配號 + tick</span></div>
 </div>
 <div class="flow">
-  <div class="box">zone_io<br><span class="dim">registry ↔ 位元組</span></div>
+  <div class="box">zone_io<br><span class="dim">Zone ↔ 位元組（兩塊）</span></div>
   <div class="arrow">→</div>
-  <div class="box">ZoneStore<br><span class="dim">位元組 ↔ 儲存</span></div>
-  <div class="arrow">→</div>
-  <div class="box">zones/&lt;hex&gt;.bin<br><span class="dim">一 zone 一檔</span></div>
+  <div class="box">dir/&lt;16hex&gt;.bin<br><span class="dim">一 zone 一檔</span></div>
+  <div class="arrow">＋</div>
+  <div class="box">manifest.bin<br><span class="dim">next_zone_id</span></div>
 </div>
 
 <h2>閱讀路徑（依依賴順序）</h2>
 <div class="grid">
 
-<a class="card" href="01-zone-key.html">
-  <h3>第 1 站 zone_key.h — 座標語言</h3>
-  <p>整個專案的「門牌系統」，其他所有檔案都建立在它的語意上。</p>
-  <p class="dim">1 檔 · 105 行</p>
-</a>
-<a class="card" href="02-util.html">
-  <h3>第 2 站 util/ — 容器與巨集工具</h3>
+<a class="card" href="01-util.html">
+  <h3>第 1 站 util/ — 容器與巨集工具</h3>
   <p>tdarray：唯一的容器工具，row-major 2D 陣列；mydef：metaprogramming 巨集。</p>
-  <p class="dim">2 檔 · 261 行</p>
+  <p class="dim">2 檔 · 266 行</p>
+</a>
+<a class="card" href="02-zone-core.html">
+  <h3>第 2 站 zone.h + tile.h — 核心資料結構</h3>
+  <p>Zone{id, parent, reg, layers}：一個 zone = 一個 registry + 自帶多層 tile 地圖。</p>
+  <p class="dim">2 檔 · 55 行</p>
 </a>
 <a class="card" href="03-components.html">
   <h3>第 3 站 components/ — 資料積木</h3>
-  <p>六個 POD component；留意 WorldConfig（ROOT singleton）與 ZoneMeta（placeholder）。</p>
-  <p class="dim">6 檔 · 95 行</p>
+  <p>兩個 POD component：Position（x,y,z）與 Velocity（示範用）。</p>
+  <p class="dim">2 檔 · 25 行</p>
 </a>
 <a class="card" href="04-serialize.html">
   <h3>第 4 站 serialize/ — 存讀檔管線</h3>
-  <p>registry → snapshot → cereal 位元組 → ZoneStore 落盤；AllComponents 是唯一登記點。</p>
-  <p class="dim">4 檔 · 175 行</p>
+  <p>registry_io：registry ↔ 位元組；zone_io：完整 Zone 兩塊接合。AllComponents 是唯一登記點。</p>
+  <p class="dim">4 檔 · 130 行</p>
 </a>
-<a class="card" href="05-global-manager.html">
-  <h3>第 5 站 GlobalManager — 總管</h3>
-  <p>把前四站接起來：管理 root + 已載入 zones，跑 tick，做整局存讀檔。</p>
-  <p class="dim">2 檔 · 168 行</p>
+<a class="card" href="05-zone-manager.html">
+  <h3>第 5 站 ZoneManager — 總管</h3>
+  <p>把前四站接起來：id 配發、開檔協定、tick、存讀檔與損毀防護。</p>
+  <p class="dim">2 檔 · 224 行</p>
 </a>
 <a class="card" href="06-systems.html">
   <h3>第 6 站 systems/movement.h — system 的樣板</h3>
-  <p>所有未來 system 的形狀範本：自由函式、吃 entt::registry&、用 view 遍歷。</p>
-  <p class="dim">1 檔 · 18 行</p>
+  <p>所有未來 system 的形狀範本：自由函式、吃 Zone&；位置變更收口於 move_by。</p>
+  <p class="dim">1 檔 · 26 行</p>
 </a>
 <a class="card" href="07-tests.html">
   <h3>第 7 站 projects/tests/src/main.cpp — 可執行的規格書</h3>
-  <p>16 個 case，每個 test 就是一段「這功能該怎麼用」的示範。</p>
-  <p class="dim">1 檔 · 363 行</p>
+  <p>15 個 case，每個 test 就是一段「這功能該怎麼用」的示範。</p>
+  <p class="dim">1 檔 · 368 行</p>
 </a>
 <a class="card" href="08-gbind.html">
   <h3>附錄 gbind/ — Godot GDExtension 接線</h3>
@@ -82,7 +83,7 @@ registry → cereal 轉位元組 → <code>ZoneStore</code> 落盤；<code>tick(
 
 <h2>架構不變量（修改前必知）</h2>
 <ul class="points">
-<li><b>多 registry / zone 生命週期</b>——一個 zone = 一個 <code>entt::registry</code>，由 GlobalManager 管理；root 永久存活、放全局實體，其餘 zones 按需載入/卸載。ZoneKey 是全局唯一定址，磁碟 path 由 key 推導、不另存全域清單。</li><li><b>序列化</b>——EnTT snapshot 遍歷 registry，cereal PortableBinaryArchive 負責位元格式，透過 entt_cereal_archive.h 橋接。component 型別清單的單一來源是 all_components.h 的 <code>AllComponents</code>，save/load 兩邊共用。</li><li><b>元件即資料</b>——component 盡量是 POD aggregate；entity 之間的參照存 <code>entt::entity</code>。system 寫成吃 <code>entt::registry&amp;</code> 的自由函式。</li>
+<li><b>多 registry / zone 生命週期</b>——一個 zone = 一個 <code>Zone</code>（registry＋自帶多層地圖），由 ZoneManager 管理；root 永久存活、放全局實體，其餘 zones 按需載入/卸載。zone id 是零語意單調序號、由 create_child 單點配發，磁碟 path 由 id 推導、不另存全域 zone 清單。</li><li><b>序列化</b>——EnTT snapshot 遍歷 registry，cereal PortableBinaryArchive 負責位元格式，透過 entt_cereal_archive.h 橋接。component 型別清單的單一來源是 all_components.h 的 <code>AllComponents</code>，save/load 兩邊共用。存檔無版本欄位——格式變更＝刪存檔目錄。</li><li><b>元件即資料</b>——component 盡量是 POD aggregate；entity 之間的參照存 <code>entt::entity</code>。system 寫成吃 <code>Zone&amp;</code> 的自由函式；位置變更一律收口於 <code>systems::move_by</code>。</li>
 </ul>
 
 <h2>真相層連結</h2>

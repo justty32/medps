@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 站 zone.h + tile.h — 核心資料結構</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+
+<nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
+<h1>第 2 站 zone.h + tile.h — 核心資料結構</h1>
+<p class="meta">2 個檔案，共 55 行 ·
+ 對照 <a href="../CODE_TOUR.md">CODE_TOUR.md</a></p>
+<p>zone id 是<b>零座標語意</b>的裸 <code>uint64_t</code> 單調序號（舊 ZoneKey 位元打包已移除）；層級只活在 <code>parent</code> 鏈上。<code>ZONE_ROOT=0</code> 永駐、沒有地圖，放非地圖的全局實體。</p><p><code>layers</code> 是 <code>map&lt;int, tdarray&lt;Tile&gt;&gt;</code>，鍵即 z（地面=0、往下為負、稀疏）。地圖是 zone 的固有結構、不走 ECS——代價是 registry snapshot 不含它，存檔由 zone_io 分兩塊處理（見第 4 站）。</p>
+<h2>看什麼</h2>
+<ul class="points">
+<li>Tile{terrain, flags}：不是 component；flags 快取通行性。 <a class="loc" href="#projects-medp-src-gcore-zone-tile-h-L12">tile.h:12</a></li><li>TILE_WALKABLE / TILE_BLOCKS_SIGHT 通行 flags。 <a class="loc" href="#projects-medp-src-gcore-zone-tile-h-L9">tile.h:9</a></li><li>Zone 本體：身分直接掛 struct，不再用 placeholder entity 攜帶。 <a class="loc" href="#projects-medp-src-gcore-zone-zone-h-L19">zone.h:19</a></li><li>layers：鍵即 z 的稀疏多層地圖。 <a class="loc" href="#projects-medp-src-gcore-zone-zone-h-L36">zone.h:36</a></li><li>registry 不可複製 → Zone 只能移動。 <a class="loc" href="#projects-medp-src-gcore-zone-zone-h-L27">zone.h:27</a></li>
+</ul>
+<div class="quiz"><b>讀完該能回答：</b>為什麼地圖掛在 Zone 上而不是做成 component？代價是什麼？（答案在 layers 的註解。）</div>
+
+<section class="file" id="projects-medp-src-gcore-zone-tile-h">
+  <h3><code>projects/medp/src/gcore/zone/tile.h</code> <span class="dim">（18 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/zone/tile.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L1"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L2"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L3"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L3">3</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L4"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L4">4</a><span class="src"><span class="cm">// 地圖格網中的一格。`terrain` 是 def id（由內容 / 前端對映到視覺呈現）；</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L5"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L5">5</a><span class="src"><span class="cm">// `flags` 快取與模擬相關的通行性，讓 FOV / 尋路不必每格去查 terrain def。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L6"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L6">6</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L7"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L7">7</a><span class="src"><span class="cm">// Tile 不是 component——地圖是 Zone 的固有結構（見 zone.h 的 Zone::layers），</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L8"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L8">8</a><span class="src"><span class="cm">// 不掛在任何 entity 上。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L9"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L9">9</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint32_t</span> TILE_WALKABLE     = <span class="nu">1u</span> &lt;&lt; <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L10"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L10">10</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint32_t</span> TILE_BLOCKS_SIGHT = <span class="nu">1u</span> &lt;&lt; <span class="nu">1</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L11"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L11">11</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L12"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L12">12</a><span class="src"><span class="kw">struct</span> Tile {</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L13"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L13">13</a><span class="src">    <span class="kw">uint32_t</span> terrain{<span class="nu">0</span>};</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L14"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L14">14</a><span class="src">    <span class="kw">uint32_t</span> flags{<span class="nu">0</span>};</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L15"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L15">15</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L16"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L16">16</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L17"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L17">17</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(terrain, flags); }</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-tile-h-L18"><a class="no" href="#projects-medp-src-gcore-zone-tile-h-L18">18</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-zone-zone-h">
+  <h3><code>projects/medp/src/gcore/zone/zone.h</code> <span class="dim">（37 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/zone/zone.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L1"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L2"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L3"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L3">3</a><span class="src"><span class="pp">#include</span> &lt;map&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L4"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L4">4</a><span class="src"><span class="pp">#include</span> &lt;entt.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L5"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L5">5</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../util/tdarray.hpp&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L6"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L6">6</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;tile.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L7"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L7">7</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L8"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L8">8</a><span class="src"><span class="cm">// root zone 的固定 id。它永久存活、沒有地圖，放的是非地圖的全局實體</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L9"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L9">9</a><span class="src"><span class="cm">//（陣營 / 神祇 / 具名角色）。root 的 parent 就是它自己。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L10"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L10">10</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint64_t</span> ZONE_ROOT = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L11"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L11">11</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L12"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L12">12</a><span class="src"><span class="cm">// 一個 zone = 一個獨立的 entt::registry，加上它自己的身分。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L13"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L13">13</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L14"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L14">14</a><span class="src"><span class="cm">// 身分直接掛在 Zone 上，不再由 registry 內部的 placeholder entity 攜帶</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L15"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L15">15</a><span class="src"><span class="cm">//（舊做法是 ZoneMeta component，已移除）。好處是不必為了「讓 zone 有身分」</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L16"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L16">16</a><span class="src"><span class="cm">// 而保證 registry 裡永遠有一個活著的 entity。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L17"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L17">17</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L18"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L18">18</a><span class="src"><span class="cm">// 注意：entt::registry 不可複製，因此 Zone 也不可複製，只能移動。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L19"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L19">19</a><span class="src"><span class="kw">struct</span> Zone {</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L20"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L20">20</a><span class="src">    <span class="cm">// 全局唯一識別。原本 ZoneKey 的位元打包（type/x/y/z）已移除，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L21"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L21">21</a><span class="src">    <span class="cm">// 這裡先用裸整數佔位；分層與座標語意待重新設計。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L22"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L22">22</a><span class="src">    <span class="kw">uint64_t</span> id{};</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L23"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L23">23</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L24"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L24">24</a><span class="src">    <span class="cm">// 直接父 zone 的 id；與自己相同時代表沒有父層。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L25"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L25">25</a><span class="src">    <span class="kw">uint64_t</span> parent{};</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L26"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L26">26</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L27"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L27">27</a><span class="src">    entt::registry reg;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L28"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L28">28</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L29"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L29">29</a><span class="src">    <span class="cm">// 地圖：一個垂直層一張 tile 格網，鍵就是 z（以地面為中心，往下為負）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L30"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L30">30</a><span class="src">    <span class="cm">// 用 map 而非 vector：層是稀疏的（多數 zone 只有地面層），z 可以是負數，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L31"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L31">31</a><span class="src">    <span class="cm">// 而且日後往上下擴充不必重新編號。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L32"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L32">32</a><span class="src">    <span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L33"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L33">33</a><span class="src">    <span class="cm">// 直接掛在 Zone 上，不走 ECS——地圖是 zone 的固有結構，不是某個 entity 的屬性。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L34"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L34">34</a><span class="src">    <span class="cm">// 代價：它不在 registry 裡，所以 registry_io 的 snapshot 不會碰它，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L35"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L35">35</a><span class="src">    <span class="cm">// 存檔由 serialize/zone_io.h 分兩塊處理。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L36"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L36">36</a><span class="src">    std::map&lt;<span class="kw">int</span>, tdarray&lt;Tile&gt;&gt; layers;</span></div>
+<div class="line" id="projects-medp-src-gcore-zone-zone-h-L37"><a class="no" href="#projects-medp-src-gcore-zone-zone-h-L37">37</a><span class="src">};</span></div>
+  </div>
+</section>
+<nav class="pager"><a href="01-util.html">← 第 1 站 util/ — 容器與巨集工具</a><a href="03-components.html">第 3 站 components/ — 資料積木 →</a></nav>
+
+<footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python3 build.py</code> 即同步。</footer>
+</body>
+</html>

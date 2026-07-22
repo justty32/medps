@@ -13,6 +13,8 @@
 
 ## Open
 
+- **待過目** docs/work 四份文檔同步新核心 — [progress_overview](docs/work/progress_overview.md)（全面重寫的進度快照）、[gcore_overview](docs/work/architecture/gcore_overview.md)（新核心逐檔導覽）、[zone_layers](docs/work/design/zone_layers.md)（**定位變更**：降級為設計願景＋實作現況，三層尺度仍有效）、[lifecycle](docs/work/design/lifecycle.md)（名詞對齊 ZoneManager）。看點：zone_layers 的「實作現況」節是否符合你對三層願景的想法；另 `docs/references/zone_streaming_architecture.md` 教學仍是舊架構（index 卡片已標過期），要不要重寫等你裁定。
+- **待過目＋親自驗證** html 導覽層已隨新核心重生（[index](workflows/common/code-map/html/index.html)，8 站：01-util…08-gbind）——請瀏覽器開啟看新站台切分與嵌入原始碼是否合意。
 - **待過目** `projects/tests/src/main.cpp` — 測試套件整套重寫對應新核心，**15/15 綠**，取代舊 16 項基準。看點：case 總表在檔尾 `main()`；`test_open_protocol_guards`／`test_load_id_mismatch_throws` 是新增的損毀防護驗證；`test_tick_all_zones` 明文固定「root 也參加 tick」的新語意（舊架構 root 不參加）。
 
 - **待過目** zone 定址＋生命週期落地（[spec 拍板結果表](workflows/specs/zone-addressing-lifecycle-design.md)，已逐條經你裁定）——`projects/medp/src/gcore/zone/zone_manager.h:38-42`：`create_child` 單點配號（`create` 收 private）；`zone_manager.cpp:9-31`：開檔協定（manifest 還原 next_id、root.bin 必讀回、無 manifest 有 .bin → throw）；`zone_manager.cpp:79-89`：manifest 原子寫；`zone_manager.cpp:60-64`＋`:106-109`：destroy 刪檔＋load 驗 id。驗證：建置綠＋新測試套件 15/15。
@@ -22,5 +24,4 @@
 - **待過目** 頂層文件整理（對齊 `~/repo/workflows` 乾淨 kernel）：刪除 4 個模板治理檔（`ADOPTION`/`INIT-QUESTIONS`/`MAINTENANCE`/`SYNC`，屬模板 repo 非本專案）、移除壞掉的 `commands/`（README 列的檔全不存在）、`others/`→`references/`（含 5 檔內部交叉引用）、新增 [INDEX.md](INDEX.md) repo 地圖並在 `AGENTS.md:14` 加入口。頂層 md 12→9。純文件、零原始碼變更，git 可全復原；未 commit。看點：INDEX.md 佈局是否符合你對頂層目錄的描述。
 - **待過目** `projects/medp/src/gcore/util/tdarray.hpp:10-27` — 補上全檔僅缺的註解：檔頭三條使用慣例（true=失敗、is_coor 座標、get/getptr/getval 差異），加上各函式家族短註；純註解、零邏輯變更，16 項測試全綠。
 - **待過目＋親自驗證** `docs/index.html` — 新增 `docs/` 文件彙整頁：依「進度總覽 / 設計架構(work) / 外部教學(references)」三區列出全部 9 份 md，各附標題、一句摘要、路徑與連結；單一自帶樣式 HTML，可直接用瀏覽器開。看點：分區與摘要是否符合你對 docs 的心智；連結指向 .md 原檔（瀏覽器多半顯示原始文字），若想要渲染後閱讀體驗再告知。
-- **待過目＋親自驗證** `workflows/common/code-map/html/index.html` — 新的程式碼 HTML 導覽層（8 站、嵌入帶行號上色的原始碼、行號錨點、深淺色主題）。請用瀏覽器開啟看瀏覽體驗是否合意；由 `build.py` 生成，程式碼更新後重跑 `python3 build.py` 即同步。
 

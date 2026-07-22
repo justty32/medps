@@ -10,127 +10,33 @@
 
 <nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
 <h1>第 3 站 components/ — 資料積木</h1>
-<p class="meta">6 個檔案，共 95 行 ·
+<p class="meta">2 個檔案，共 25 行 ·
  對照 <a href="../CODE_TOUR.md">CODE_TOUR.md</a></p>
-<p>全部是 POD aggregate + <code>serialize()</code> 成員；entity 之間的參照存 <code>entt::entity</code>。快速掃過即可，但三個「非典型」的要細看。</p><p><b>鐵律：新增 component 必須同步登記 serialize/all_components.h 的 AllComponents</b>，否則存檔會默默漏掉它（見第 4 站）。</p>
+<p>全部是 POD aggregate + <code>serialize()</code> 成員；entity 之間的參照存 <code>entt::entity</code>。</p><p><b>鐵律：新增 component 必須同步登記 serialize/all_components.h 的 AllComponents</b>，否則存檔會默默漏掉它（見第 4 站）。</p>
 <h2>看什麼</h2>
 <ul class="points">
-<li>ZoneMeta：每個 zone 的 placeholder entity 持有，保證 zone 至少有一個非孤兒 entity（跟第 4 站 orphans() 互相咬合），也記錄 self/parent key。 <a class="loc" href="#projects-medp-src-gcore-components-zone-meta-h-L7">zone_meta.h:7</a></li><li>WorldConfig：singleton 掛在 ROOT 上，per-save 不可變（world_dim 已烘進 key 運算）。 <a class="loc" href="#projects-medp-src-gcore-components-world-config-h-L10">world_config.h:10</a></li><li>AreaTerrain：密集 terrain grid 掛在單一「map」entity 上；tile 不是一格一 entity。通行性兩層：terrain flags（這裡）+ 逐 entity 的 Blocking。 <a class="loc" href="#projects-medp-src-gcore-components-area-terrain-h-L22">area_terrain.h:22</a></li><li>Blocking：疊在 terrain 之上的逐 entity 阻擋（門、巨石、大型生物）。 <a class="loc" href="#projects-medp-src-gcore-components-blocking-h-L5">blocking.h:5</a></li><li>Position 有 .x/.y，因此滿足 tdarray 的 is_coor concept。 <a class="loc" href="#projects-medp-src-gcore-components-position-h-L6">position.h:6</a></li>
+<li>Position{x,y,z}：z 即 Zone::layers 的鍵；有 .x/.y 故滿足 tdarray 的 is_coor concept。 <a class="loc" href="#projects-medp-src-gcore-components-position-h-L7">position.h:7</a></li><li>Velocity{dx,dy}：每 tick 移動步（示範用）。 <a class="loc" href="#projects-medp-src-gcore-components-velocity-h-L5">velocity.h:5</a></li>
 </ul>
-<div class="quiz"><b>讀完該能回答：</b>為什麼遊戲中途不能改 world_dim？為什麼每個 zone 一定要有一個帶 component 的 placeholder entity？</div>
+<div class="quiz"><b>讀完該能回答：</b>新增一個 component 除了寫 struct 本身，還必須改哪個檔？</div>
 
-<section class="file" id="projects-medp-src-gcore-components-zone-meta-h">
-  <h3><code>projects/medp/src/gcore/components/zone_meta.h</code> <span class="dim">（13 行）</span>
-      <a class="loc" href="../../../../projects/medp/src/gcore/components/zone_meta.h">開啟原始檔</a></h3>
-  <div class="code">
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L1"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L2"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L2">2</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone_key.h&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L3"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L3">3</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L4"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L4">4</a><span class="src"><span class="cm">// 每個 zone 的 placeholder entity 都持有的身分 component。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L5"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L5">5</a><span class="src"><span class="cm">// 保證 zone 永遠至少有一個非孤兒的 entity（見 zone_io.h），</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L6"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L6">6</a><span class="src"><span class="cm">// 並讓已載入的 registry 知道自己代表哪個 ZoneKey 以及它的 parent。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L7"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L7">7</a><span class="src"><span class="kw">struct</span> ZoneMeta {</span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L8"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L8">8</a><span class="src">    ZoneKey self{ZONE_ROOT};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L9"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L9">9</a><span class="src">    ZoneKey parent{ZONE_ROOT};   <span class="cm">// 直接的 parent zone；ZONE_ROOT = 掛在 root 之下</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L10"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L10">10</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L11"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L11">11</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L12"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L12">12</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(self, parent); }</span></div>
-<div class="line" id="projects-medp-src-gcore-components-zone-meta-h-L13"><a class="no" href="#projects-medp-src-gcore-components-zone-meta-h-L13">13</a><span class="src">};</span></div>
-  </div>
-</section>
-<section class="file" id="projects-medp-src-gcore-components-world-config-h">
-  <h3><code>projects/medp/src/gcore/components/world_config.h</code> <span class="dim">（21 行）</span>
-      <a class="loc" href="../../../../projects/medp/src/gcore/components/world_config.h">開啟原始檔</a></h3>
-  <div class="code">
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L1"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L2"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L3"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone_key.h&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L4"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L4">4</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L5"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L5">5</a><span class="src"><span class="cm">// 每份存檔的全域世界設定。以 SINGLETON component 掛在 ROOT 上，因此會跟著</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L6"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L6">6</a><span class="src"><span class="cm">// root 走正常的 snapshot/cereal 存檔路徑（由 save_all 寫出、load_root 還原）</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L7"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L7">7</a><span class="src"><span class="cm">// -- 不需要另外的 meta 檔。在世界生成時決定，且在該存檔的整個生命週期內 IMMUTABLE：</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L8"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L8">8</a><span class="src"><span class="cm">// world_dim 已內嵌進 ZoneKey 的座標語意，遊戲中途更動會讓所有既有 key 失效。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L9"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L9">9</a><span class="src"><span class="cm">// 需要它的 system 以 `const WorldConfig&amp;`（自由函式風格）取用。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L10"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L10">10</a><span class="src"><span class="kw">struct</span> WorldConfig {</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L11"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L11">11</a><span class="src">    <span class="cm">// 世界地圖 = world_dim_x × world_dim_y 個 world-tile（大陸 + 海洋）。新遊戲時可由</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L12"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L12">12</a><span class="src">    <span class="cm">// 玩家選擇（小 / 中 / 大）；x、y 必須滿足 zone_scale::valid_world_dim。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L13"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L13">13</a><span class="src">    <span class="kw">int16_t</span> world_dim_x{zone_scale::WORLD_DIM_DEFAULT};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L14"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L14">14</a><span class="src">    <span class="kw">int16_t</span> world_dim_y{zone_scale::WORLD_DIM_DEFAULT};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L15"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L15">15</a><span class="src">    <span class="cm">// 垂直層數（z 軸）。預設 3 = Underground/Ground/Sky（−1/0/1）；保留此欄位以便</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L16"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L16">16</a><span class="src">    <span class="cm">// 日後擴充更多層（冥界、天界…）。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L17"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L17">17</a><span class="src">    <span class="kw">int16_t</span> world_dim_z{zone_scale::WORLD_LAYERS_DEFAULT};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L18"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L18">18</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L19"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L19">19</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L20"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L20">20</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(world_dim_x, world_dim_y, world_dim_z); }</span></div>
-<div class="line" id="projects-medp-src-gcore-components-world-config-h-L21"><a class="no" href="#projects-medp-src-gcore-components-world-config-h-L21">21</a><span class="src">};</span></div>
-  </div>
-</section>
-<section class="file" id="projects-medp-src-gcore-components-area-terrain-h">
-  <h3><code>projects/medp/src/gcore/components/area_terrain.h</code> <span class="dim">（27 行）</span>
-      <a class="loc" href="../../../../projects/medp/src/gcore/components/area_terrain.h">開啟原始檔</a></h3>
-  <div class="code">
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L1"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L2"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L3"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../util/tdarray.hpp&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L4"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L4">4</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L5"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L5">5</a><span class="src"><span class="cm">// Area terrain grid 中的一格。`terrain` 是 def id（由內容 / 前端對映到視覺呈現）；</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L6"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L6">6</a><span class="src"><span class="cm">// `flags` 快取與模擬相關的通行性，讓 FOV / 尋路不必每格去查 terrain def。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L7"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L7">7</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint8_t</span> TILE_WALKABLE     = <span class="nu">1</span> &lt;&lt; <span class="nu">0</span>;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L8"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L8">8</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint8_t</span> TILE_BLOCKS_SIGHT = <span class="nu">1</span> &lt;&lt; <span class="nu">1</span>;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L9"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L9">9</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L10"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L10">10</a><span class="src"><span class="kw">struct</span> Tile {</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L11"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L11">11</a><span class="src">    <span class="kw">uint16_t</span> terrain{<span class="nu">0</span>};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L12"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L12">12</a><span class="src">    <span class="kw">uint8_t</span>  flags{<span class="nu">0</span>};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L13"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L13">13</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L14"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L14">14</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L15"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L15">15</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(terrain, flags); }</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L16"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L16">16</a><span class="src">};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L17"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L17">17</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L18"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L18">18</a><span class="src"><span class="cm">// 一個 Area zone 的密集 terrain grid（Rimworld 風格，約 250x250）。以 component 掛在</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L19"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L19">19</a><span class="src"><span class="cm">// 單一「map」entity 上，因此會跟著走正常的 snapshot/cereal 存檔路徑</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L20"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L20">20</a><span class="src"><span class="cm">// -- registry ctx() 不會被 zone_io 序列化。可移動的「things」（actor、</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L21"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L21">21</a><span class="src"><span class="cm">// item）是各自獨立的 entity；tile 並非一格一個 entity。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L22"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L22">22</a><span class="src"><span class="kw">struct</span> AreaTerrain {</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L23"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L23">23</a><span class="src">    tdarray&lt;Tile&gt; tiles;   <span class="cm">// 維度大小存在 tiles.sx / tiles.sy</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L24"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L24">24</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L25"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L25">25</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L26"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L26">26</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(tiles); }</span></div>
-<div class="line" id="projects-medp-src-gcore-components-area-terrain-h-L27"><a class="no" href="#projects-medp-src-gcore-components-area-terrain-h-L27">27</a><span class="src">};</span></div>
-  </div>
-</section>
-<section class="file" id="projects-medp-src-gcore-components-blocking-h">
-  <h3><code>projects/medp/src/gcore/components/blocking.h</code> <span class="dim">（11 行）</span>
-      <a class="loc" href="../../../../projects/medp/src/gcore/components/blocking.h">開啟原始檔</a></h3>
-  <div class="code">
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L1"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L2"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L2">2</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L3"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L3">3</a><span class="src"><span class="cm">// 站在某格上的離散物件（關閉的門、巨石、大型生物）逐 entity 的通行性。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L4"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L4">4</a><span class="src"><span class="cm">// terrain 層級的通行性放在 AreaTerrain 的 tile flags；這個則是疊在 terrain 之上的阻擋。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L5"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L5">5</a><span class="src"><span class="kw">struct</span> Blocking {</span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L6"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L6">6</a><span class="src">    <span class="kw">bool</span> blocks_move{<span class="kw">true</span>};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L7"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L7">7</a><span class="src">    <span class="kw">bool</span> blocks_sight{<span class="kw">false</span>};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L8"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L8">8</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L9"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L9">9</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L10"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L10">10</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(blocks_move, blocks_sight); }</span></div>
-<div class="line" id="projects-medp-src-gcore-components-blocking-h-L11"><a class="no" href="#projects-medp-src-gcore-components-blocking-h-L11">11</a><span class="src">};</span></div>
-  </div>
-</section>
 <section class="file" id="projects-medp-src-gcore-components-position-h">
-  <h3><code>projects/medp/src/gcore/components/position.h</code> <span class="dim">（12 行）</span>
+  <h3><code>projects/medp/src/gcore/components/position.h</code> <span class="dim">（14 行）</span>
       <a class="loc" href="../../../../projects/medp/src/gcore/components/position.h">開啟原始檔</a></h3>
   <div class="code">
 <div class="line" id="projects-medp-src-gcore-components-position-h-L1"><a class="no" href="#projects-medp-src-gcore-components-position-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
 <div class="line" id="projects-medp-src-gcore-components-position-h-L2"><a class="no" href="#projects-medp-src-gcore-components-position-h-L2">2</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L3"><a class="no" href="#projects-medp-src-gcore-components-position-h-L3">3</a><span class="src"><span class="cm">// actor 在其 zone 內的 grid 位置（zone 的地圖是一個 tdarray grid）。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L4"><a class="no" href="#projects-medp-src-gcore-components-position-h-L4">4</a><span class="src"><span class="cm">// 整數 tile 座標；zone 的分層編碼在 ZoneKey 裡，不在這裡。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L5"><a class="no" href="#projects-medp-src-gcore-components-position-h-L5">5</a><span class="src"><span class="cm">// （具有 .x/.y，因此也滿足 tdarray 的 is_coor concept。）</span></span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L6"><a class="no" href="#projects-medp-src-gcore-components-position-h-L6">6</a><span class="src"><span class="kw">struct</span> Position {</span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L7"><a class="no" href="#projects-medp-src-gcore-components-position-h-L7">7</a><span class="src">    <span class="kw">int</span> x{};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L8"><a class="no" href="#projects-medp-src-gcore-components-position-h-L8">8</a><span class="src">    <span class="kw">int</span> y{};</span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L9"><a class="no" href="#projects-medp-src-gcore-components-position-h-L9">9</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L10"><a class="no" href="#projects-medp-src-gcore-components-position-h-L10">10</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L11"><a class="no" href="#projects-medp-src-gcore-components-position-h-L11">11</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(x, y); }</span></div>
-<div class="line" id="projects-medp-src-gcore-components-position-h-L12"><a class="no" href="#projects-medp-src-gcore-components-position-h-L12">12</a><span class="src">};</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L3"><a class="no" href="#projects-medp-src-gcore-components-position-h-L3">3</a><span class="src"><span class="cm">// actor 在其 zone 內的 grid 位置（zone 的地圖是 Zone::layers 那疊 tdarray）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L4"><a class="no" href="#projects-medp-src-gcore-components-position-h-L4">4</a><span class="src"><span class="cm">// 整數 tile 座標；「在哪個 zone」由 entity 所屬的 registry 決定，不記在這裡。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L5"><a class="no" href="#projects-medp-src-gcore-components-position-h-L5">5</a><span class="src"><span class="cm">// z 是所在 layer，即 Zone::layers 的鍵：地面=0，往下為負。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L6"><a class="no" href="#projects-medp-src-gcore-components-position-h-L6">6</a><span class="src"><span class="cm">// （具有 .x/.y，因此也滿足 tdarray 的 is_coor concept。）</span></span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L7"><a class="no" href="#projects-medp-src-gcore-components-position-h-L7">7</a><span class="src"><span class="kw">struct</span> Position {</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L8"><a class="no" href="#projects-medp-src-gcore-components-position-h-L8">8</a><span class="src">    <span class="kw">int</span> x{};</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L9"><a class="no" href="#projects-medp-src-gcore-components-position-h-L9">9</a><span class="src">    <span class="kw">int</span> y{};</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L10"><a class="no" href="#projects-medp-src-gcore-components-position-h-L10">10</a><span class="src">    <span class="kw">int</span> z{};</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L11"><a class="no" href="#projects-medp-src-gcore-components-position-h-L11">11</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L12"><a class="no" href="#projects-medp-src-gcore-components-position-h-L12">12</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L13"><a class="no" href="#projects-medp-src-gcore-components-position-h-L13">13</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(x, y, z); }</span></div>
+<div class="line" id="projects-medp-src-gcore-components-position-h-L14"><a class="no" href="#projects-medp-src-gcore-components-position-h-L14">14</a><span class="src">};</span></div>
   </div>
 </section>
 <section class="file" id="projects-medp-src-gcore-components-velocity-h">
@@ -150,7 +56,7 @@
 <div class="line" id="projects-medp-src-gcore-components-velocity-h-L11"><a class="no" href="#projects-medp-src-gcore-components-velocity-h-L11">11</a><span class="src">};</span></div>
   </div>
 </section>
-<nav class="pager"><a href="02-util.html">← 第 2 站 util/ — 容器與巨集工具</a><a href="04-serialize.html">第 4 站 serialize/ — 存讀檔管線 →</a></nav>
+<nav class="pager"><a href="02-zone-core.html">← 第 2 站 zone.h + tile.h — 核心資料結構</a><a href="04-serialize.html">第 4 站 serialize/ — 存讀檔管線 →</a></nav>
 
 <footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
  <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_MAP.md">CODE_MAP.md</a>；

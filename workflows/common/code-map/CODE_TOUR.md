@@ -4,64 +4,70 @@
 [CODE_MAP.md](CODE_MAP.md) 是 agent 修改前的查表；本檔是人的導讀，兩者同鏈維護（見文末）。
 瀏覽器版導覽在 [html/index.html](html/index.html)（嵌入帶行號的原始碼；由 `html/build.py` 生成）。
 
-目前全部核心碼約 1,200 行，照本路徑一次讀完約 1–1.5 小時。
+目前全部核心碼約 1,100 行，照本路徑一次讀完約 1 小時。
 
 ## 全貌一句話
 
-`GlobalManager` 管一堆 `entt::registry`（一個 zone 一個），zone 用 64-bit `ZoneKey` 定址，
-存讀檔 = snapshot 遍歷 registry → cereal 轉位元組 → `ZoneStore` 落盤；`tick()` 對每個已載入 zone 跑所有註冊的 system。
+`ZoneManager` 管一堆 `Zone`（一個 zone = 一個 `entt::registry` + 自帶多層 tile 地圖），
+zone id 是零語意的單調序號、由 `create_child` 配發；存讀檔 = 一 zone 一檔（zone_io 兩塊接合）＋
+`manifest.bin` 記 id 計數器；`tick()` 對每個已載入 zone（**含 root**）跑所有註冊的 system。
 
 ## 閱讀路徑（依依賴順序）
 
-### 第 1 站 `projects/medp/src/gcore/zone_key.h`（105 行）— 座標語言
+### 第 1 站 `projects/medp/src/gcore/util/`（2 檔，~270 行）— 容器與巨集工具
 
-整個專案的「門牌系統」，其他所有檔案都建立在它的語意上。
+- `tdarray.hpp`：2D 陣列模板，row-major（`vec[x*sy+y]`），已 cereal 化。檔頭三條使用慣例必讀：
+  回傳 bool 的操作一律「**true = 失敗 / 越界 / 中斷**」；座標可傳任何有 `.x/.y` 的型別（`is_coor`）；
+  取值家族 get/getref（未檢查）、getptr（檢查、可 nullptr）、getval（複本、可帶 default）。
+- `mydef.h`：metaprogramming 巨集，各附使用範例，掃過即可。
 
-- `ZoneType`（`zone_key.h:9`）：World ⊃ Region ⊃ Area 嚴格三層，type 值即樹深度，父層 type 隱含。
-- `zone_scale`（`zone_key.h:31`）：尺度常數單一來源；`world_dim` 是唯一 per-save 執行期設定。
-- 打包/解包（`zone_key.h:53`）：`ZoneType:16|x:16|y:16|z:16`。
-- 換算（`zone_key.h:72-105`）：注意 **Area 的 x,y 是全局 region-格座標**（`world*REGION_DIM + local`），`parent_of` 用整數除法回推。
-- 檔內多處 `TODO: 要掛在 ruleset 底下`——這是已知的未來方向。
+讀完該能回答：`arr.set(x, y, v)` 回傳 `true` 代表什麼？（跟直覺相反。）
 
-讀完該能回答：一個 Area key 的父 Region key 怎麼算？z 在換算鏈中如何傳遞？（答案都在 `parent_of`，`zone_key.h:91`）
+### 第 2 站 `projects/medp/src/gcore/zone/zone.h` + `tile.h`（55 行）— 核心資料結構
 
-### 第 2 站 `projects/medp/src/gcore/util/tdarray.hpp`（173 行）— 唯一的容器工具
+- `Tile`（`tile.h:12`）：`{uint32 terrain, flags}`＋`TILE_WALKABLE`/`TILE_BLOCKS_SIGHT`。**不是 component**——地圖是 zone 的固有結構。
+- `Zone`（`zone.h:19`）：`{id, parent, reg, layers}`。id 是裸 `uint64_t` 零座標語意（舊 ZoneKey 位元打包已移除）；
+  `layers`（`zone.h:36`）是 `map<int, tdarray<Tile>>`，鍵即 z（地面=0、往下為負、稀疏）。
+- registry 不可複製 → Zone 只能移動；`ZONE_ROOT=0` 永駐、放非地圖的全局實體。
 
-2D 陣列模板，row-major（`vec[x*sy+y]`，`tdarray.hpp:63`），已 cereal 化。掃過 `resize/out/get/getref` 即可，不必細讀。
+讀完該能回答：為什麼地圖掛在 Zone 上而不是做成 component？（代價是什麼——registry snapshot 不含它。）
 
-### 第 3 站 `projects/medp/src/gcore/components/`（6 檔，共 ~95 行）— 資料積木
+### 第 3 站 `projects/medp/src/gcore/components/`（2 檔，~25 行）— 資料積木
 
-全是 POD aggregate + `serialize()` 成員。快速掃過，特別留意兩個「非典型」的：
+全是 POD aggregate + `serialize()` 成員。
 
-- `WorldConfig`（`world_config.h:10`）：**singleton，掛在 ROOT** 上，per-save 不可變（world_dim 已烘進 key 運算）。
-- `ZoneMeta`（`zone_meta.h:7`）：每個 zone 的 placeholder entity 持有，保證 zone 至少有一個非孤兒 entity（跟第 4 站的 `orphans()` 互相咬合）。
-- `AreaTerrain`（`area_terrain.h:22`）：密集 terrain grid 掛在單一「map」entity 上；tile **不是**一格一 entity。通行性兩層：terrain flags（這裡）+ 逐 entity 的 `Blocking`。
+- `Position{x,y,z}`：zone 內 grid 座標，z 即 `Zone::layers` 的鍵；有 `.x/.y` 故滿足 tdarray 的 `is_coor`。
+- `Velocity{dx,dy}`：每 tick 移動步（示範用）。
+- **鐵律：新增 component 必須同步登記 `serialize/all_components.h` 的 `AllComponents`**（見第 4 站）。
 
-### 第 4 站 `projects/medp/src/gcore/serialize/`（4 檔，共 ~175 行）— 存讀檔管線
+### 第 4 站 `projects/medp/src/gcore/serialize/`（4 檔，~130 行）— 存讀檔管線
 
 建議順序：
 
-1. `all_components.h:12` — `AllComponents` type_list，**新增 component 唯一要登記的地方**。
+1. `all_components.h` — `AllComponents` type_list，**新增 component 唯一要登記的地方**。
 2. `entt_cereal_archive.h` — 純膠水：把 entt snapshot 的 callback 簽章轉成 cereal 呼叫，`entt::entity` ↔ 底層整數。
-3. `registry_io.h:16,23` — `save_impl/load_impl` 用 fold expression 展開 AllComponents；`registry_io.h:30` 的 `loader.orphans()` 是**陷阱點**：load 後沒有任何 component 的 entity 會被清掉。
-4. `zone_store.h:15` — `ZoneStore` 抽象（bytes↔儲存）與 `FolderZoneStore`；`path()`（`zone_store.h:37`）：key → `dir_/<16碼hex>.bin`，root 特例 `root.bin`。
+3. `registry_io.h:16,23` — `save_impl/load_impl` 用 fold expression 展開 AllComponents；`registry_io.h:30` 的 `loader.orphans()` 是**陷阱點**：load 後沒有任何（已登記）component 的 entity 會被清掉。
+4. `zone_io.h` — 完整 Zone 的存讀：第一塊（id/parent/layers）直接 cereal、第二塊（reg）走 registry_io，兩塊依序接在同一 stream；大括號限制 archive 生存期是 cereal 解構時才寫出的緣故。**無版本欄位**（使用者裁定）：格式一變，舊檔讀出來就是壞資料。
 
-讀完該能回答：為什麼新 component 忘了登記 AllComponents 存檔會「默默」漏掉它、不會報錯？
+讀完該能回答：為什麼新 component 忘了登記 AllComponents，存檔會「默默」漏掉它、不會報錯？
 
-### 第 5 站 `projects/medp/src/gcore/global_manager.h` / `.cpp`（168 行）— 總管
+### 第 5 站 `projects/medp/src/gcore/zone/zone_manager.h` / `.cpp`（224 行）— 總管
 
-把前四站全部接起來。header 註解已寫得很完整，`.cpp` 每個函式都在 10 行以內：
+把前四站全部接起來。header 註解寫了三條契約（tick 重入禁令、單槽活儲存、`Zone*` 不跨 tick 持有），必讀：
 
-- `create`（`global_manager.cpp:24`）：植入 ZoneMeta placeholder。
-- `load`（`global_manager.cpp:34`）：store 沒有該 key 時**靜默給空 registry**——目前語意如此，不是 bug。
-- `tick`（`global_manager.cpp:90`）：對每個已載入 zone × 每個 system 依註冊順序跑；**root 不參加 tick**。
-- `init_world`（`global_manager.cpp:66`）：assert 檢查 `valid_world_dim`，冪等覆寫 singleton。
+- 建構子（`zone_manager.cpp:9`）：開檔協定——有 manifest → 還原 next_id＋**必讀回 root.bin**（缺失 throw）；無 manifest 但有 .bin → throw；乾淨目錄 → 新世界。
+- `create_child`（`zone_manager.cpp:47`）：id 單點配發（永不復用），配發即原子寫 manifest；撞既有檔或 parent 未載入 → throw。
+- `load`（`zone_manager.cpp:97`）：檔案不存在回 false；檔內 id 與請求不符 → throw。
+- `destroy`（`zone_manager.cpp:60`）：連盤上檔案一起刪（死 zone 不復活）。
+- `tick`（`zone_manager.cpp:126`）：每個已載入 zone × 每個 system 依註冊順序；**root 也參加**。
+
+讀完該能回答：哪三種磁碟狀態會讓建構子 throw？為什麼 create_child 要在建 zone 前先寫 manifest？
 
 ### 第 6 站 `projects/medp/src/gcore/systems/movement.h`（26 行）— system 的樣板
 
 `movement.h:20`：所有未來 system 的形狀範本——自由函式、吃 `Zone&`、用 view 遍歷。位置變更一律經 `move_by`（`movement.h:12`）收口，不直改 Position。
 
-### 第 7 站 `projects/tests/src/main.cpp`（~330 行）— 可執行的規格書
+### 第 7 站 `projects/tests/src/main.cpp`（~370 行）— 可執行的規格書
 
 15 個 case 的總表在檔尾 `main()`。每個 test 就是一段「這功能該怎麼用」的示範；改任何行為前先看對應 test 的期望。
 
