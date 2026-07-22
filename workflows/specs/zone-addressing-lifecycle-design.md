@@ -2,7 +2,22 @@
 
 - 討論日期：2026-07-22
 - 來源：[tome4 報告](../../docs/work/design/tome4_recommendations.md) §2-D（生命週期）＋ §2-F（定址與跨 zone 引用），即 §4 step 2 的兩道 P0 設計題。
-- 狀態：**待拍板**。拍板後另出 plan 才動工；本文檔只凍結語意。
+- 狀態：**已拍板並落地（2026-07-22）**。拍板結果見下節；與原案不同處以使用者裁定為準，原 §2-§9 內文降級為參考草稿。
+
+## 拍板結果（權威，逐條經使用者裁定）
+
+| 題目 | 裁定 | 狀態 |
+|------|------|------|
+| 版本欄位 | **全滅**：zone 檔、manifest 都不帶 magic/version（原 P0 Task 1 已放棄）。格式變更＝手動刪存檔目錄，重寫期成本使用者自負 | 定案 |
+| id 配發 | `create_child(parent)` 內部 `next_id_++` 單點配發（0 保留 root、永不復用）；`create` 收 private（`emplace_zone`）；配發撞既有檔 → throw | **已落地** |
+| manifest.bin | 只存 `next_zone_id`；tmp+rename 原子寫；**定位：未來擴充成這份存檔的 metainfo 檔** | **已落地** |
+| 開檔協定 | manifest 存在 → 還原 next_id＋必須讀回 root.bin（缺失 throw）；無 manifest 但有 .bin → throw；乾淨 → 新世界 | **已落地** |
+| fail-fast | load 後驗檔內 id＝請求 id；destroy 同步刪盤上檔案 | **已落地** |
+| 文件約定三條 | tick 重入禁令、單槽活儲存、Zone* 不跨 tick 持有——已寫進 zone_manager.h 註解 | **已落地** |
+| 目錄分桶 | **不做**，痛了再說（重寫期存檔隨時作廢，屆時遷移＝刪檔重玩） | defer |
+| persistence 兩態 | **不做**，目前全部 Persistent、連 enum 都不建。觸發：第一個產生一次性地圖的玩法。另記使用者需求：**未來要做「清理很久沒訪問且不重要的 zone .bin」機制**，屆時與此題一起設計 | defer |
+| LRU 卸載 | **不做**（touch/pinned/budget 全套不建）。觸發：第一個大量載入 zone 的玩法／記憶體實際成為問題；可與上條「久未訪問就處理」一族合併設計 | defer |
+| children／跨 zone 引用／返回座標／Portal | **不在此輪凍結**：原 §3.4/3.7/3.8/3.9 降為參考草稿，屆時動工前逐條重審 | defer |
 - 產出方法：三取向設計面板（最小增量／ToME 對齊／4X 尺度）＋雙評審交叉評分。兩位評審一致選最小增量案為骨架（91/89 分），本文檔 = 骨架＋自另兩案併入的 11 條補強＋評審點名漏洞的補拍板。設計責任在本文檔，不在面板。
 
 `Done when:` 定址（id 形態/配發/children/跨 zone 引用/返回座標/傳送）與生命週期（persistence/卸載）的每個語意問題都有拍板或綁觸發條件的 defer；本輪落地範圍與不做範圍明確；使用者過目後可直接展開 plan。
