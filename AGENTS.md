@@ -22,7 +22,7 @@
 
 - 所有回覆與留檔使用**繁體中文**。
 - 程式碼引用必須附**路徑:行號**。
-- 重構/整理必須 behavior-preserving；改完跑測試（16 項全綠為基準）。
+- 重構/整理必須 behavior-preserving；改完跑測試（15 項全綠為基準）。
 - **新增 component 時必須同步登記 `projects/medp/src/gcore/serialize/all_components.h` 的 `AllComponents`**，否則存檔會漏掉它。
 - 未經使用者確認，不 push、不開新大型工作。
 - 不 revert 使用者或其他 agent 的未確認變更；遇到衝突先停下說明。

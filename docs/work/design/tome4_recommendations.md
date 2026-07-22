@@ -162,7 +162,7 @@ medps 的對應：
 | ZoneMeta placeholder 防 orphans 清空 | **已推翻** | 身分改由 struct 承載；殘餘風險見 §2-E-2 |
 | 「底層型別不叫 Zone」命名戒律 | **已推翻** | 現行就叫 `struct Zone`，讀舊文檔時注意措辭對映 |
 | WorldConfig root singleton / world_dim 凍結 | **已推翻** | 隨 ZoneKey 刪除；新定址方案可自由重新決定 |
-| 16 項測試全綠基準 | **已失效** | 測試套件仍對應舊架構，目前不可編譯；見 §2-E-2 與 §4 step 0 |
+| 16 項測試全綠基準 | **已重建（2026-07-22）** | 整套重寫為對應新核心的 15 項（含 orphans 機制驗證與 ZoneManager 損毀防護），15/15 綠 |
 | 絕不全載、記憶體正比於已載入數 | **存續** | §2-D 的硬約束 |
 | create/load/unload/save_all API 形狀 | **存續** | ZoneManager 與舊 GlobalManager 同形（唯 load_root 已無對應物） |
 | Ruleset 兩-scope 生命週期原則 | **存續（文本過時）** | process-resident / ctx 注入 / 規則檔吃 OS 路徑等方向有效；lifecycle.md 內文的 GlobalManager、load_root()、WorldConfig、ZoneKey 段落需對映到新 API 讀。`Tile::terrain` 作為 def id 索引 Ruleset 的語意仍適用 |

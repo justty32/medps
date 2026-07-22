@@ -13,7 +13,7 @@ projects/medp/src/gcore/          — 遊戲核心框架（EnTT + cereal）
 projects/medp/src/gbind/          — Godot 4 GDExtension facade（薄殼，CMake 第二 target，預設不編）
 projects/medp/include/            — 第三方 header-only 庫（entt、cereal）——不要修改
 projects/medp/data/               — 資料目錄（build 時複製到 projects/medp/build/bin/data）
-projects/tests/                   — 測試執行檔（projects/tests/src/main.cpp，16 項測試）
+projects/tests/                   — 測試執行檔（projects/tests/src/main.cpp，15 項測試）
 projects/archived/                — 重寫前原型（非源碼）
 docs/work/                        — 歷史分析/設計文檔
 ```
@@ -39,7 +39,7 @@ docs/work/                        — 歷史分析/設計文檔
 
 | 檔案 | 覆蓋 |
 |------|------|
-| `projects/tests/src/main.cpp` | 全部 16 項測試：zone_key 打包/換算、zone 生命週期、序列化 round-trip、movement 等 |
+| `projects/tests/src/main.cpp` | 全部 15 項測試：序列化 round-trip/orphans、tdarray、zone_io、ZoneManager（開檔協定/配號/持久化/損毀防護）、movement |
 
 ## Docs / 分析
 

@@ -17,6 +17,10 @@
 
 - 2026-07-22（P0 落地）：[save-format-position-z 計畫](workflows/plans/save-format-position-z.md)執行完畢（詳見其「執行結果」節）——Task 1 存檔 magic/version **使用者裁定放棄**；Task 2 Position 補 `int z`＋`Zone::layers` 鍵改 `int`（使用者修訂，原計畫 int16_t）；Task 3 move_by 收口＋movement 改吃 `Zone&`。medp 建置綠、movement.h 臨時 TU 過。**open 待辦**：html 導覽層過期未重生（`python3 workflows/common/code-map/html/build.py`）；測試重建仍暫緩；本輪存檔格式 break（Position 佈局變、無版本欄位，舊 .bin 讀不回且不會報格式錯）。
 
+- 2026-07-22（spec 拍板＋落地）：[zone-addressing-lifecycle spec](workflows/specs/zone-addressing-lifecycle-design.md) 經使用者逐條裁定並直接落地（詳其「拍板結果」表）——**版本欄位全滅**（zone 檔與 manifest 都不帶）；create_child 配號＋manifest.bin（只存 next_zone_id，未來擴充為存檔 metainfo）＋開檔協定＋destroy 刪檔＋load 驗 id＋三條註解約定已進 zone_manager；分桶/persistence 兩態/LRU/children/EntityRef/ReturnTrail/Portal **全部 defer 且不凍結設計**。使用者另點名未來需求：「清理很久沒訪問且不重要的 zone .bin」機制。驗證：建置綠＋smoke 程式（未進 repo）；測試重建仍暫緩。
+
+- 2026-07-22（測試基準重建）：`projects/tests/src/main.cpp` 整套重寫對應新核心，**15/15 綠**（序列化 roundtrip/orphans/空、tdarray、zone_io 全 Zone 往返、ZoneManager 開檔協定/配號/跨 session 持久化/unload/destroy 刪檔/兩條損毀 throw/load 驗 id、move_by/tick 全 zone/系統順序）。前兩則所稱「測試套件斷裂、基準失效」**已解除**；AGENTS/testing/CODE_MAP/CODE_TOUR 的基準敘述同步為 15 項。仍 open：docs/work/ 舊設計文檔（progress_overview、gcore_overview、zone_layers、lifecycle）未同步新架構；html 導覽層未重生。
+
 ## 各工作流 session-log
 
 | 工作流 | session-log | open 摘要 |

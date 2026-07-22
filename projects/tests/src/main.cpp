@@ -1,20 +1,19 @@
-#include <gcore/zone_key.h>
-#include <gcore/components/zone_meta.h>
+#include <gcore/zone/zone.h>
+#include <gcore/zone/zone_manager.h>
+#include <gcore/zone/tile.h>
 #include <gcore/components/position.h>
 #include <gcore/components/velocity.h>
-#include <gcore/components/area_terrain.h>
-#include <gcore/components/blocking.h>
 #include <gcore/systems/movement.h>
+#include <gcore/serialize/registry_io.h>
 #include <gcore/serialize/zone_io.h>
-#include <gcore/serialize/zone_store.h>
-#include <gcore/global_manager.h>
 
 #include <cassert>
-#include <sstream>
 #include <cstdio>
-#include <vector>
 #include <filesystem>
-#include <memory>
+#include <sstream>
+#include <stdexcept>
+
+namespace fs = std::filesystem;
 
 // ---- 輔助工具 ----
 
@@ -23,310 +22,317 @@ static void fail(const char* name) { std::printf("  [FAIL] %s\n", name); }
 
 #define CHECK(name, expr) do { if (expr) pass(name); else { fail(name); return false; } } while(0)
 
-// ---- 測試 ----
-
-static bool test_zone_key_roundtrip() {
-    auto key = make_zone_key(ZoneType{1}, -100, 200, -1);
-    CHECK("type",  zone_key_type(key) == ZoneType{1});
-    CHECK("x",     zone_key_x(key)    == -100);
-    CHECK("y",     zone_key_y(key)    == 200);
-    CHECK("z",     zone_key_z(key)    == -1);
-    return true;
+// 每個 ZoneManager 測試用自己的乾淨暫存目錄
+static fs::path fresh_dir(const char* leaf) {
+    auto dir = fs::temp_directory_path() / "medps_test" / leaf;
+    fs::remove_all(dir);
+    return dir;
 }
 
-static bool test_zone_key_root() {
-    CHECK("root is 0", ZONE_ROOT == 0);
-    return true;
-}
+// ---- 序列化（registry_io）----
 
-static bool test_serialize_roundtrip() {
+static bool test_registry_roundtrip() {
     entt::registry src;
-
     auto e1 = src.create();
-    src.emplace<Position>(e1, 42, 7);
-
+    src.emplace<Position>(e1, 42, 7, -1);
+    src.emplace<Velocity>(e1, 3, 4);
     auto e2 = src.create();
-    // e2 沒有 Position
-
-    auto e3 = src.create();
-    src.emplace<Position>(e3, 0, 0);
+    src.emplace<Position>(e2, 0, 0, 0);
 
     std::stringstream ss;
-    zone_io::save(src, ss);
-
+    registry_io::save(src, ss);
     entt::registry dst;
-    zone_io::load(dst, ss);
+    registry_io::load(dst, ss);
 
-    // e1 應持有 Position{42, 7}
-    auto view = dst.view<Position>();
     int count = 0;
-    bool e1_ok = false, e3_ok = false;
-    for (auto e : view) {
-        auto& p = view.get<Position>(e);
-        if (p.x == 42 && p.y == 7) e1_ok = true;
-        if (p.x == 0  && p.y == 0) e3_ok = true;
+    bool e1_ok = false, e2_ok = false;
+    for (auto e : dst.view<Position>()) {
+        auto& p = dst.get<Position>(e);
+        if (p.x == 42 && p.y == 7 && p.z == -1)
+            e1_ok = dst.all_of<Velocity>(e) && dst.get<Velocity>(e).dx == 3;
+        if (p.x == 0 && p.y == 0 && p.z == 0) e2_ok = true;
         ++count;
     }
-
-    CHECK("component count", count == 2);
-    CHECK("e1 data",         e1_ok);
-    CHECK("e3 data",         e3_ok);
+    CHECK("position count", count == 2);
+    CHECK("e1 pos+vel",     e1_ok);
+    CHECK("e2 pos",         e2_ok);
     return true;
 }
 
-static bool test_serialize_orphans_removed() {
+static bool test_registry_orphans_removed() {
     // 不持有任何 AllComponents 內 component 的 entity，會被 loader.orphans() 移除
     entt::registry src;
-    auto e_empty = src.create();        // 無 component，load 後會成為孤兒
+    auto e_empty = src.create();
     auto e_with  = src.create();
-    src.emplace<Position>(e_with, 1, 2);
+    src.emplace<Position>(e_with, 1, 2, 0);
 
     std::stringstream ss;
-    zone_io::save(src, ss);
-
+    registry_io::save(src, ss);
     entt::registry dst;
-    zone_io::load(dst, ss);
+    registry_io::load(dst, ss);
 
-    // snapshot_loader 會保留 entity 值；orphans() 則會銷毀 e_empty
     CHECK("orphan removed",  !dst.valid(e_empty));
     CHECK("non-orphan kept",  dst.valid(e_with));
     return true;
 }
 
-static bool test_zone_meta_placeholder_survives() {
-    // 一個唯一 entity 只是 ZoneMeta placeholder 的 zone，必須能在 round-trip 後存活
+static bool test_registry_empty() {
     entt::registry src;
-    auto ph = src.create();
-    src.emplace<ZoneMeta>(ph, ZoneKey{12345});
+    std::stringstream ss;
+    registry_io::save(src, ss);
+    entt::registry dst;
+    registry_io::load(dst, ss);
+    CHECK("empty registry", dst.storage<entt::entity>().size() == 0u);
+    return true;
+}
+
+// ---- tdarray ----
+
+static bool test_tdarray_basics() {
+    tdarray<Tile> g;
+    CHECK("alloc ok",        !g.alloc(3, 3));
+    CHECK("set in bounds",   !g.set(1, 2, Tile{7, TILE_WALKABLE}));
+    CHECK("set out of bounds", g.set(3, 0, Tile{}));   // true = 越界失敗
+    Tile t = g.getval(1, 2);
+    CHECK("stored value", t.terrain == 7 && (t.flags & TILE_WALKABLE));
+    return true;
+}
+
+// ---- zone_io（完整 Zone 往返）----
+
+static bool test_zone_io_roundtrip() {
+    Zone src;
+    src.id     = 9;
+    src.parent = 4;
+    src.layers[0].alloc(2, 2);
+    src.layers[0].set(0, 1, Tile{3, TILE_BLOCKS_SIGHT});
+    src.layers[-1].alloc(1, 1);                        // 地下層，鍵為負
+    auto e = src.reg.create();
+    src.reg.emplace<Position>(e, 5, 6, -1);
 
     std::stringstream ss;
     zone_io::save(src, ss);
-
-    entt::registry dst;
+    Zone dst;
     zone_io::load(dst, ss);
 
-    auto view = dst.view<ZoneMeta>();
-    int count = 0;
-    bool key_ok = false;
-    for (auto e : view) { key_ok = (view.get<ZoneMeta>(e).self == ZoneKey{12345}); ++count; }
-
-    CHECK("placeholder count", count == 1);
-    CHECK("placeholder key",   key_ok);
-    return true;
-}
-
-static bool test_zone_path_deterministic() {
-    FolderZoneStore s{"zones"};
-    auto k = make_zone_key(ZoneType{1}, 5, 6, 7);
-    CHECK("same key same path", s.path(k) == s.path(k));
-    CHECK("diff key diff path", s.path(k) != s.path(ZoneKey{k + 1}));
-    CHECK("root special name",  s.path(ZONE_ROOT) != s.path(k));
-    return true;
-}
-
-static bool test_save_load_root() {
-    auto dir = std::filesystem::temp_directory_path() / "medps_test_root";
-    std::filesystem::remove_all(dir);
-
-    auto child = make_zone_key(ZoneType{1}, 1, 0, 0);
-
-    {   // session 1：建立一場遊戲並做存檔
-        GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
-        auto e = gm.root.create();
-        gm.root.emplace<ZoneMeta>(e, ZONE_ROOT, ZONE_ROOT);
-        gm.create(child, ZONE_ROOT);   // 建立並持久化一個子 zone
-        gm.save_all();
+    CHECK("id/parent",   dst.id == 9 && dst.parent == 4);
+    CHECK("layer count", dst.layers.size() == 2);
+    Tile t = dst.layers[0].getval(0, 1);
+    CHECK("tile data",   t.terrain == 3 && (t.flags & TILE_BLOCKS_SIGHT));
+    bool pos_ok = false;
+    for (auto en : dst.reg.view<Position>()) {
+        auto& p = dst.reg.get<Position>(en);
+        pos_ok = (p.x == 5 && p.y == 6 && p.z == -1);
     }
+    CHECK("entity data", pos_ok);
+    return true;
+}
 
-    bool ok = true;
-    {   // session 2：重新開啟，驗證 root 已還原、子 zone 不自動載入但可按需載入
-        GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
-        gm2.load_root();
+// ---- ZoneManager：建構與配號 ----
 
-        if (gm2.root.view<ZoneMeta>().empty()) ok = false;   // root 的 snapshot 已還原
-        if (gm2.get(child) != nullptr) ok = false;           // 子 zone 尚未載入（按需）
-        if (gm2.load(child).view<ZoneMeta>().empty()) ok = false;  // 但能從 store 載入
+static bool test_new_world() {
+    auto dir = fresh_dir("new_world");
+    ZoneManager zm{dir};
+    CHECK("root is 0",        ZONE_ROOT == 0);
+    CHECK("only root loaded", zm.size() == 1);
+    CHECK("root parent self", zm.root().parent == ZONE_ROOT);
+    CHECK("no files yet",     !fs::exists(dir / "manifest.bin"));   // 未配號/存檔前不落盤
+    fs::remove_all(dir);
+    return true;
+}
+
+static bool test_create_child_ids() {
+    auto dir = fresh_dir("child_ids");
+    ZoneManager zm{dir};
+    auto& a = zm.create_child(ZONE_ROOT);
+    auto& b = zm.create_child(ZONE_ROOT);
+    CHECK("ids sequential",    a.id == 1 && b.id == 2);
+    CHECK("parent recorded",   a.parent == ZONE_ROOT);
+    CHECK("manifest on alloc", fs::exists(dir / "manifest.bin"));   // 配發即落 manifest
+
+    bool threw = false;
+    try { zm.create_child(999); } catch (const std::runtime_error&) { threw = true; }
+    CHECK("unloaded parent throws", threw);
+    fs::remove_all(dir);
+    return true;
+}
+
+// ---- ZoneManager：持久化 ----
+
+static bool test_persist_across_sessions() {
+    auto dir = fresh_dir("persist");
+    ZoneManager::ZoneId child_id = 0;
+
+    {   // session 1：root 放一個全局實體、子 zone 放一個 actor，存檔
+        ZoneManager zm{dir};
+        auto er = zm.root().reg.create();
+        zm.root().reg.emplace<Position>(er, 100, 100, 0);
+
+        auto& child = zm.create_child(ZONE_ROOT);
+        child_id = child.id;
+        auto ec = child.reg.create();
+        child.reg.emplace<Position>(ec, 5, 6, 0);
+        zm.save_all();
     }
-
-    std::filesystem::remove_all(dir);
-    CHECK("root persisted, child not auto-loaded but loadable", ok);
-    return true;
-}
-
-static bool test_world_config_persists() {
-    auto dir = std::filesystem::temp_directory_path() / "medps_test_worldcfg";
-    std::filesystem::remove_all(dir);
-
-    bool ok = true;
-    {   // 新遊戲：未設定的 config 會讀到預設值，接著選定 world size 並存檔
-        GlobalManager gm{std::make_unique<FolderZoneStore>(dir)};
-        if (gm.world_config().world_dim_x != zone_scale::WORLD_DIM_DEFAULT) ok = false;
-        gm.init_world(64, 48);
-        if (gm.world_config().world_dim_x != 64) ok = false;   // 設定後立即可讀
-        if (gm.world_config().world_dim_y != 48) ok = false;
-        gm.save_all();
+    {   // session 2：root 自動還原；child 不自動載入但可按需載入
+        ZoneManager zm{dir};
+        CHECK("root auto-restored", !zm.root().reg.view<Position>().empty());
+        CHECK("child not auto-loaded", zm.get(child_id) == nullptr);
+        CHECK("child loadable",     zm.load(child_id));
+        CHECK("child data intact",  !zm.get(child_id)->reg.view<Position>().empty());
+        CHECK("child parent kept",  zm.get(child_id)->parent == ZONE_ROOT);
+        auto& c2 = zm.create_child(ZONE_ROOT);
+        CHECK("next_id survives restart", c2.id == child_id + 1);   // 序號不復用
     }
-    {   // 重新開啟：world_dim 由 root 的 snapshot 還原（每份存檔各自固定、不可變）
-        GlobalManager gm2{std::make_unique<FolderZoneStore>(dir)};
-        gm2.load_root();
-        if (gm2.world_config().world_dim_x != 64) ok = false;
-        if (gm2.world_config().world_dim_y != 48) ok = false;
+    fs::remove_all(dir);
+    return true;
+}
+
+static bool test_unload_roundtrip() {
+    auto dir = fresh_dir("unload");
+    ZoneManager zm{dir};
+    auto& z = zm.create_child(ZONE_ROOT);
+    auto id = z.id;
+    auto e = z.reg.create();
+    z.reg.emplace<Position>(e, 7, 8, 0);
+
+    zm.unload(id);
+    CHECK("gone from memory", zm.get(id) == nullptr);
+    CHECK("written to disk",  fs::exists(zm.path(id)));
+    CHECK("reloadable",       zm.load(id));
+    CHECK("data intact",      !zm.get(id)->reg.view<Position>().empty());
+
+    zm.unload(ZONE_ROOT);
+    CHECK("root not unloadable", zm.get(ZONE_ROOT) != nullptr);
+    fs::remove_all(dir);
+    return true;
+}
+
+static bool test_destroy_deletes_file() {
+    auto dir = fresh_dir("destroy");
+    ZoneManager zm{dir};
+    auto& z = zm.create_child(ZONE_ROOT);
+    auto id = z.id;
+    zm.save_all();
+    CHECK("file exists before", fs::exists(zm.path(id)));
+
+    zm.destroy(id);
+    CHECK("gone from memory", zm.get(id) == nullptr);
+    CHECK("file deleted",     !fs::exists(zm.path(id)));
+    CHECK("load finds nothing", !zm.load(id));          // 死 zone 不復活
+
+    zm.destroy(ZONE_ROOT);
+    CHECK("root not destroyable", zm.get(ZONE_ROOT) != nullptr);
+    fs::remove_all(dir);
+    return true;
+}
+
+// ---- ZoneManager：開檔協定與損毀防護 ----
+
+static bool test_open_protocol_guards() {
+    // 有 zone 檔卻無 manifest → throw（不得靜默當新世界）
+    auto dir = fresh_dir("guards");
+    {
+        ZoneManager zm{dir};
+        zm.create_child(ZONE_ROOT);
+        zm.save_all();
     }
+    fs::remove(dir / "manifest.bin");
+    bool threw_no_manifest = false;
+    try { ZoneManager zm{dir}; } catch (const std::runtime_error&) { threw_no_manifest = true; }
+    CHECK("zone files without manifest throw", threw_no_manifest);
 
-    std::filesystem::remove_all(dir);
-    CHECK("world_dim set at new-game persists in root snapshot", ok);
+    // 有 manifest 卻缺 root.bin → throw（存檔損毀）
+    fs::remove_all(dir);
+    {
+        ZoneManager zm{dir};
+        zm.create_child(ZONE_ROOT);   // 配號落 manifest，但不 save_all
+    }
+    bool threw_no_root = false;
+    try { ZoneManager zm{dir}; } catch (const std::runtime_error&) { threw_no_root = true; }
+    CHECK("manifest without root.bin throws", threw_no_root);
+    fs::remove_all(dir);
     return true;
 }
 
-static bool test_world_dim_bounds() {
-    using namespace zone_scale;
-    CHECK("default valid",     valid_world_dim(WORLD_DIM_DEFAULT));
-    CHECK("zero invalid",     !valid_world_dim(0));
-    CHECK("max valid",         valid_world_dim(MAX_WORLD_DIM));
-    CHECK("over-max invalid", !valid_world_dim(MAX_WORLD_DIM + 1));
+static bool test_load_id_mismatch_throws() {
+    auto dir = fresh_dir("id_mismatch");
+    ZoneManager::ZoneId id = 0;
+    {
+        ZoneManager zm{dir};
+        id = zm.create_child(ZONE_ROOT).id;
+        zm.save_all();
+    }
+    ZoneManager zm{dir};
+    fs::copy_file(zm.path(id), zm.path(id + 500));      // 檔案錯位：內容 id ≠ 檔名 id
+    bool threw = false;
+    try { zm.load(id + 500); } catch (const std::runtime_error&) { threw = true; }
+    CHECK("mismatched file id throws", threw);
+    fs::remove_all(dir);
     return true;
 }
 
-static bool test_position_roundtrip() {
-    entt::registry src;
-    auto e = src.create();
-    src.emplace<Position>(e, 3, 4);
+// ---- movement ----
 
-    std::stringstream ss;
-    zone_io::save(src, ss);
-
-    entt::registry dst;
-    zone_io::load(dst, ss);
-
-    auto view = dst.view<Position>();
-    int count = 0; bool ok = false;
-    for (auto en : view) { auto& p = view.get<Position>(en); ok = (p.x == 3 && p.y == 4); ++count; }
-    CHECK("position count", count == 1);
-    CHECK("position data",  ok);
+static bool test_move_by() {
+    Zone z;
+    auto e = z.reg.create();
+    z.reg.emplace<Position>(e, 10, 20, 0);
+    systems::move_by(z, e, -1, 2);
+    auto& p = z.reg.get<Position>(e);
+    CHECK("moved", p.x == 9 && p.y == 22 && p.z == 0);
     return true;
 }
 
-static bool test_tick_runs_per_loaded_zone() {
-    GlobalManager gm;
-    gm.add_zone_system(systems::movement);
+static bool test_tick_all_zones() {
+    // tick 對所有 zone（含 root）依序執行 system
+    auto dir = fresh_dir("tick_all");
+    ZoneManager zm{dir};
+    zm.add_zone_system(systems::movement);
 
-    // 兩個已載入的 zone，各有一個會移動的 actor
-    auto& z1 = gm.create(make_zone_key(ZoneType{1}, 1, 0, 0), ZONE_ROOT);
-    auto e1 = z1.create();
-    z1.emplace<Position>(e1, 0, 0);
-    z1.emplace<Velocity>(e1, 1, 2);
+    auto& z1 = zm.create_child(ZONE_ROOT);
+    auto e1 = z1.reg.create();
+    z1.reg.emplace<Position>(e1, 0, 0, 0);
+    z1.reg.emplace<Velocity>(e1, 1, 2);
 
-    auto& z2 = gm.create(make_zone_key(ZoneType{1}, 2, 0, 0), ZONE_ROOT);
-    auto e2 = z2.create();
-    z2.emplace<Position>(e2, 10, 10);
-    z2.emplace<Velocity>(e2, -1, 0);
+    auto& z2 = zm.create_child(ZONE_ROOT);
+    auto e2 = z2.reg.create();
+    z2.reg.emplace<Position>(e2, 10, 10, 0);
+    z2.reg.emplace<Velocity>(e2, -1, 0);
 
-    // root 中的 actor 不應被 per-zone system tick 到
-    auto er = gm.root.create();
-    gm.root.emplace<Position>(er, 100, 100);
-    gm.root.emplace<Velocity>(er, 5, 5);
+    auto er = zm.root().reg.create();
+    zm.root().reg.emplace<Position>(er, 100, 100, 0);
+    zm.root().reg.emplace<Velocity>(er, 5, 5);
 
-    gm.tick();
+    zm.tick();
 
-    auto& p1 = z1.get<Position>(e1);
-    auto& p2 = z2.get<Position>(e2);
-    auto& pr = gm.root.get<Position>(er);
-
+    auto& p1 = z1.reg.get<Position>(e1);
+    auto& p2 = z2.reg.get<Position>(e2);
+    auto& pr = zm.root().reg.get<Position>(er);
     CHECK("zone1 moved", p1.x == 1 && p1.y == 2);
     CHECK("zone2 moved", p2.x == 9 && p2.y == 10);
-    CHECK("root untouched", pr.x == 100 && pr.y == 100);
+    CHECK("root ticked too", pr.x == 105 && pr.y == 105);
+    fs::remove_all(dir);
     return true;
 }
 
 static bool test_tick_system_order() {
-    // 對同一個 zone，system 依註冊順序執行
-    GlobalManager gm;
-    auto& z = gm.create(make_zone_key(ZoneType{1}, 3, 0, 0), ZONE_ROOT);
-    auto e = z.create();
-    z.emplace<Position>(e, 0, 0);
+    auto dir = fresh_dir("tick_order");
+    ZoneManager zm{dir};
+    auto& z = zm.create_child(ZONE_ROOT);
+    auto e = z.reg.create();
+    z.reg.emplace<Position>(e, 0, 0, 0);
 
-    gm.add_zone_system([](entt::registry& r){
-        r.view<Position>().each([](Position& p){ p.x += 1; });   // 第一步：+1
+    zm.add_zone_system([](Zone& zn){
+        zn.reg.view<Position>().each([](Position& p){ p.x += 1; });   // 第一步：+1
     });
-    gm.add_zone_system([](entt::registry& r){
-        r.view<Position>().each([](Position& p){ p.x *= 10; });  // 接著：*10
+    zm.add_zone_system([](Zone& zn){
+        zn.reg.view<Position>().each([](Position& p){ p.x *= 10; });  // 接著：*10
     });
 
-    gm.tick();
-    CHECK("order is +1 then *10", z.get<Position>(e).x == 10);
-    return true;
-}
-
-static bool test_zone_layers_and_parent() {
-    using namespace zone_scale;
-    // 由 world-tile (7,8) + region-local (3,4) 構成的 Area，位於地下層
-    auto a = area_key(7, 8, 3, 4, zlayer::Underground);
-    CHECK("area type",  zone_key_type(a) == ZoneType::Area);
-    CHECK("area gx",    zone_key_x(a) == 7 * REGION_DIM + 3);
-    CHECK("area gy",    zone_key_y(a) == 8 * REGION_DIM + 4);
-
-    auto r = parent_of(a);                       // Area -> Region，以整數除法換算
-    CHECK("parent is region", zone_key_type(r) == ZoneType::Region);
-    CHECK("region wx",        zone_key_x(r) == 7);
-    CHECK("region wy",        zone_key_y(r) == 8);
-    CHECK("z preserved",      zone_key_z(r) == zlayer::Underground);
-
-    auto w = parent_of(r);                       // Region -> World
-    CHECK("parent is world",  zone_key_type(w) == ZoneType::World);
-    CHECK("world parent root", parent_of(w) == ZONE_ROOT);
-    return true;
-}
-
-static bool test_blocking_roundtrip() {
-    entt::registry src;
-    auto e = src.create();
-    src.emplace<Blocking>(e, false, true);   // blocks_move=false、blocks_sight=true
-
-    std::stringstream ss;
-    zone_io::save(src, ss);
-    entt::registry dst;
-    zone_io::load(dst, ss);
-
-    bool ok = false;
-    for (auto en : dst.view<Blocking>()) {
-        auto& b = dst.get<Blocking>(en);
-        ok = (!b.blocks_move && b.blocks_sight);
-    }
-    CHECK("blocking round-trip", ok);
-    return true;
-}
-
-static bool test_area_terrain_roundtrip() {
-    entt::registry src;
-    auto m = src.create();
-    auto& at = src.emplace<AreaTerrain>(m);
-    at.tiles.alloc(3, 3);
-    at.tiles.set(1, 2, Tile{7, TILE_WALKABLE});
-
-    std::stringstream ss;
-    zone_io::save(src, ss);
-    entt::registry dst;
-    zone_io::load(dst, ss);
-
-    bool ok = false;
-    for (auto e : dst.view<AreaTerrain>()) {
-        auto& g = dst.get<AreaTerrain>(e);
-        Tile t = g.tiles.getval(1, 2);
-        ok = (g.tiles.sx == 3 && g.tiles.sy == 3
-              && t.terrain == 7 && (t.flags & TILE_WALKABLE));
-    }
-    CHECK("area terrain grid round-trip", ok);
-    return true;
-}
-
-static bool test_serialize_empty() {
-    entt::registry src;
-    std::stringstream ss;
-    zone_io::save(src, ss);
-
-    entt::registry dst;
-    zone_io::load(dst, ss);
-    CHECK("empty registry", dst.storage<entt::entity>().size() == 0u);
+    zm.tick();
+    CHECK("order is +1 then *10", z.reg.get<Position>(e).x == 10);
+    fs::remove_all(dir);
     return true;
 }
 
@@ -334,22 +340,21 @@ static bool test_serialize_empty() {
 
 int main() {
     struct { const char* name; bool(*fn)(); } cases[] = {
-        { "zone_key_roundtrip",  test_zone_key_roundtrip  },
-        { "zone_key_root",       test_zone_key_root       },
-        { "serialize_roundtrip",        test_serialize_roundtrip        },
-        { "serialize_orphans_removed",  test_serialize_orphans_removed  },
-        { "zone_meta_placeholder",      test_zone_meta_placeholder_survives },
-        { "zone_path_deterministic",    test_zone_path_deterministic    },
-        { "save_load_root",             test_save_load_root             },
-        { "world_config_persists",      test_world_config_persists      },
-        { "world_dim_bounds",           test_world_dim_bounds           },
-        { "position_roundtrip",         test_position_roundtrip         },
-        { "tick_per_loaded_zone",       test_tick_runs_per_loaded_zone  },
-        { "tick_system_order",          test_tick_system_order          },
-        { "zone_layers_and_parent",     test_zone_layers_and_parent     },
-        { "blocking_roundtrip",         test_blocking_roundtrip         },
-        { "area_terrain_roundtrip",     test_area_terrain_roundtrip     },
-        { "serialize_empty",            test_serialize_empty            },
+        { "registry_roundtrip",        test_registry_roundtrip        },
+        { "registry_orphans_removed",  test_registry_orphans_removed  },
+        { "registry_empty",            test_registry_empty            },
+        { "tdarray_basics",            test_tdarray_basics            },
+        { "zone_io_roundtrip",         test_zone_io_roundtrip         },
+        { "new_world",                 test_new_world                 },
+        { "create_child_ids",          test_create_child_ids          },
+        { "persist_across_sessions",   test_persist_across_sessions   },
+        { "unload_roundtrip",          test_unload_roundtrip          },
+        { "destroy_deletes_file",      test_destroy_deletes_file      },
+        { "open_protocol_guards",      test_open_protocol_guards      },
+        { "load_id_mismatch_throws",   test_load_id_mismatch_throws   },
+        { "move_by",                   test_move_by                   },
+        { "tick_all_zones",            test_tick_all_zones            },
+        { "tick_system_order",         test_tick_system_order         },
     };
 
     int passed = 0, total = 0;

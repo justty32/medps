@@ -61,9 +61,9 @@
 
 `movement.h:20`：所有未來 system 的形狀範本——自由函式、吃 `Zone&`、用 view 遍歷。位置變更一律經 `move_by`（`movement.h:12`）收口，不直改 Position。
 
-### 第 7 站 `projects/tests/src/main.cpp`（363 行）— 可執行的規格書
+### 第 7 站 `projects/tests/src/main.cpp`（~330 行）— 可執行的規格書
 
-16 個 case 的總表在 `main.cpp:336`。每個 test 就是一段「這功能該怎麼用」的示範；改任何行為前先看對應 test 的期望。
+15 個 case 的總表在檔尾 `main()`。每個 test 就是一段「這功能該怎麼用」的示範；改任何行為前先看對應 test 的期望。
 
 ### 附錄 `projects/medp/src/gbind/`
 
