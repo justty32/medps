@@ -2,6 +2,7 @@
 
 #include "mydef.h"
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 #include <type_traits>
@@ -9,7 +10,7 @@
 
 // ---- tdarray<T> — 2D 陣列模板 ---------------------------------------------
 // 單一 std::vector 打平存放，row-major：索引 = x*sy + y（x 是「列」，y 是「行」）。
-// 已 cereal 化（serialize 存 sx, sy, vec），是 AreaTerrain 等 grid component 的底層容器。
+// 已 cereal 化（serialize 存 sx, sy, vec），是 Zone::map 等格網的底層容器。
 //
 // 使用前必知的三個慣例：
 // 1. 回傳 bool 的操作（alloc/out/set/each…）一律「true = 失敗 / 越界 / 提早中斷」，
@@ -44,22 +45,26 @@ private:
 	}
 	std::vector<T> vec;   // 打平的儲存區，大小恆為 sx*sy（usable 時）
 public:
-	size_t sx = 0, sy = 0;   // 維度；alloc/clear 之外不要直接改
+	// 維度；alloc/clear 之外不要直接改。
+	// 固定 32 位元（而非 size_t）是為了存檔可攜：size_t 在 32/64 位元平台上寬度
+	// 不同，PortableBinaryArchive 只正規化位元組序、不處理寬度差異。
+	uint32_t sx = 0, sy = 0;
 	tdarray() {}
-	tdarray(size_t sizex, size_t sizey): tdarray(){
+	tdarray(uint32_t sizex, uint32_t sizey): tdarray(){
 		alloc(sizex, sizey);
 	}
 	template<class Archive>
 	void serialize(Archive& ar) { ar(sx, sy, vec); }
 	// usable = 已配置且 sx*sy 與實際大小一致；多數操作先以 unusable() 防衛。
-	inline bool usable() { return vec.size() > 0 && sx > 0 && sy > 0 && sx * sy == vec.size(); }
+	inline bool usable() { return vec.size() > 0 && sx > 0 && sy > 0
+		&& static_cast<size_t>(sx) * sy == vec.size(); }
 	inline bool unusable() { return !usable(); }
 	// 配置 sizex*sizey；會先 clear 舊內容。回傳 true = 失敗（任一維為 0）。
-	bool alloc(size_t sizex, size_t sizey){
+	bool alloc(uint32_t sizex, uint32_t sizey){
 		if (sizex == 0 || sizey == 0)
 			return true;
 		clear();
-		vec.resize(sizex * sizey);
+		vec.resize(static_cast<size_t>(sizex) * sizey);
 		sx = sizex;
 		sy = sizey;
 		return false;

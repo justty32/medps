@@ -1,58 +1,36 @@
 #pragma once
-#include <filesystem>
-#include <fstream>
-#include <entt.hpp>
+#include <istream>
+#include <ostream>
 #include <cereal/archives/portable_binary.hpp>
-#include "entt_cereal_archive.h"
-#include "all_components.h"
+#include <cereal/types/map.hpp>
+#include "../zone/zone.h"
+#include "registry_io.h"
 
+// 一個完整 Zone 的 save/load。
+//
+// Zone 有兩塊資料，走兩條不同的路：
+//   1. id / parent / layers —— 純資料，直接交給 cereal
+//   2. reg                  —— entity 與 component，得走 EnTT snapshot（registry_io）
+//
+// 檔案格式就是這兩塊依序接在一起。注意 cereal archive 是在解構時才把緩衝
+// 寫出去的，所以第一塊必須用大括號限制生存期，確保它先完整落地，
+// registry_io 才接著往同一個 stream 寫。
 namespace zone_io {
 
-namespace detail {
-
-    template<typename... Cs>
-    void save_impl(entt::registry& reg, output_archive& out, entt::type_list<Cs...>) {
-        auto snap = entt::snapshot{reg};
-        snap.get<entt::entity>(out);
-        (snap.get<Cs>(out), ...);
+inline void save(Zone& z, std::ostream& os) {
+    {
+        cereal::PortableBinaryOutputArchive ar{os};
+        ar(z.id, z.parent, z.layers);
     }
+    registry_io::save(z.reg, os);
+}
 
-    template<typename... Cs>
-    void load_impl(entt::registry& reg, input_archive& in, entt::type_list<Cs...>) {
-        auto loader = entt::snapshot_loader{reg};
-        loader.get<entt::entity>(in);
-        (loader.get<Cs>(in), ...);
-        // orphans() 會銷毀所有最終沒有任何 component 的 entity。
-        // 慣例：剛建立的 zone 必須保留一個帶有至少一個 component 的
-        // 佔位 entity，否則它會在這裡被清掉。
-        loader.orphans();
+inline void load(Zone& z, std::istream& is) {
+    {
+        cereal::PortableBinaryInputArchive ar{is};
+        ar(z.id, z.parent, z.layers);
     }
-
-} // namespace detail
-
-inline void save(entt::registry& reg, std::ostream& os) {
-    cereal::PortableBinaryOutputArchive cereal_out{os};
-    output_archive out{cereal_out};
-    detail::save_impl(reg, out, AllComponents{});
-}
-
-inline void load(entt::registry& reg, std::istream& is) {
-    cereal::PortableBinaryInputArchive cereal_in{is};
-    input_archive in{cereal_in};
-    detail::load_impl(reg, in, AllComponents{});
-}
-
-inline void save(entt::registry& reg, const std::filesystem::path& path) {
-    if (path.has_parent_path())
-        std::filesystem::create_directories(path.parent_path());
-    std::ofstream ofs{path, std::ios::binary};
-    save(reg, ofs);
-}
-
-inline void load(entt::registry& reg, const std::filesystem::path& path) {
-    if (!std::filesystem::exists(path)) return;
-    std::ifstream ifs{path, std::ios::binary};
-    load(reg, ifs);
+    registry_io::load(z.reg, is);
 }
 
 } // namespace zone_io
