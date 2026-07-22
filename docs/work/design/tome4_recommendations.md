@@ -64,7 +64,7 @@ ToME 的 Level/Map 職責分離：Level 管「誰在這層」（`entities` uid �
 
 建議：等第一個需要它的系統（碰撞、FOV）出現時，給 Zone 加 per-layer 的格→實體反查表，且結構第一天就做成「分類→entity」的多值容器——4X 必然出現 actor+物品+陷阱同格，單值表會返工。分類用 `enum class`、與序列化數值解耦（ToME 的裸魔術數字滲入所有呼叫點，是反面教材）。維護學 ToME 懶更新（實體移動時寫入，不每 tick 重建）。
 
-不必急著做，但設計移動系統時要預留「位置變更必經一個函式」的口子——ToME 的 Actor 禁止直接設 x/y、必須走 `move()`（合理推測正是為了讓索引維護有單一入口，語料未明述動機）。這對 medps 是具體警訊：現行 [movement.h](../../../projects/medp/src/gcore/systems/movement.h) 直接 `p.x += v.dx` 改 Position，將來有空間索引後這條路必須收口。
+不必急著做，但設計移動系統時要預留「位置變更必經一個函式」的口子——ToME 的 Actor 禁止直接設 x/y、必須走 `move()`（合理推測正是為了讓索引維護有單一入口，語料未明述動機）。這對 medps 是具體警訊：~~現行 [movement.h](../../../projects/medp/src/gcore/systems/movement.h) 直接 `p.x += v.dx` 改 Position，將來有空間索引後這條路必須收口~~ **已收口（2026-07-22）：位置變更統一走 `systems::move_by`（movement.h:12），tile flag 檢查與空間索引維護將來掛這裡**。
 
 ### C. 阻擋模型劃界（P1）——重構刪掉了 Blocking，模型只剩一半
 

@@ -43,7 +43,7 @@
 
 1. `all_components.h:12` — `AllComponents` type_list，**新增 component 唯一要登記的地方**。
 2. `entt_cereal_archive.h` — 純膠水：把 entt snapshot 的 callback 簽章轉成 cereal 呼叫，`entt::entity` ↔ 底層整數。
-3. `zone_io.h:14,21` — `save_impl/load_impl` 用 fold expression 展開 AllComponents；`zone_io.h:28` 的 `loader.orphans()` 是**陷阱點**：load 後沒有任何 component 的 entity 會被清掉（所以才需要 ZoneMeta placeholder）。
+3. `registry_io.h:16,23` — `save_impl/load_impl` 用 fold expression 展開 AllComponents；`registry_io.h:30` 的 `loader.orphans()` 是**陷阱點**：load 後沒有任何 component 的 entity 會被清掉。
 4. `zone_store.h:15` — `ZoneStore` 抽象（bytes↔儲存）與 `FolderZoneStore`；`path()`（`zone_store.h:37`）：key → `dir_/<16碼hex>.bin`，root 特例 `root.bin`。
 
 讀完該能回答：為什麼新 component 忘了登記 AllComponents 存檔會「默默」漏掉它、不會報錯？
@@ -57,9 +57,9 @@
 - `tick`（`global_manager.cpp:90`）：對每個已載入 zone × 每個 system 依註冊順序跑；**root 不參加 tick**。
 - `init_world`（`global_manager.cpp:66`）：assert 檢查 `valid_world_dim`，冪等覆寫 singleton。
 
-### 第 6 站 `projects/medp/src/gcore/systems/movement.h`（18 行）— system 的樣板
+### 第 6 站 `projects/medp/src/gcore/systems/movement.h`（26 行）— system 的樣板
 
-`movement.h:11`：所有未來 system 的形狀範本——自由函式、吃 `entt::registry&`、用 view 遍歷。
+`movement.h:20`：所有未來 system 的形狀範本——自由函式、吃 `Zone&`、用 view 遍歷。位置變更一律經 `move_by`（`movement.h:12`）收口，不直改 Position。
 
 ### 第 7 站 `projects/tests/src/main.cpp`（363 行）— 可執行的規格書
 

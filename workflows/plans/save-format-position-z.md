@@ -1,5 +1,14 @@
 # P0：存檔版本欄位 + Position 補 z + 移動收口 — 實作計畫
 
+## 執行結果（2026-07-22，已收工）
+
+- **Task 1 放棄**：使用者裁定完全不做存檔 magic/version（zone_io.h 未動）。勿再撿回。
+- **Task 2 落地（有修訂）**：使用者裁定 z 用 `int`（非原計畫的 int16_t），且 `Zone::layers` 鍵同步 `int16_t`→`int`（zone.h:36）。stale 名稱兩處已修。
+- **Task 3 照計畫落地**：move_by 收口 + movement 改吃 `Zone&`；引用點（zone_manager.h / CODE_MAP / CODE_TOUR / tome4 報告回註）已同步；臨時 TU 語法編譯通過。
+- 驗證：medp/medp_static 建置全綠；html 導覽層未重生（記待辦）；測試套件重建依指示仍暫緩。
+
+---
+
 - 出計畫日期：2026-07-22
 - 依據：[tome4 報告](../../docs/work/design/tome4_recommendations.md) §2-A、§2-E-1、§2-B 收口警訊（[報告:67](../../docs/work/design/tome4_recommendations.md)）；§4 step 1。
 - 對應 spec：無（設計已定，直接出 plan）。定址/生命週期另見 [zone-addressing-lifecycle-design](../specs/zone-addressing-lifecycle-design.md)（待拍板，與本計畫獨立）。

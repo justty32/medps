@@ -10,7 +10,7 @@
 
 // ---- tdarray<T> — 2D 陣列模板 ---------------------------------------------
 // 單一 std::vector 打平存放，row-major：索引 = x*sy + y（x 是「列」，y 是「行」）。
-// 已 cereal 化（serialize 存 sx, sy, vec），是 Zone::map 等格網的底層容器。
+// 已 cereal 化（serialize 存 sx, sy, vec），是 Zone::layers 等格網的底層容器。
 //
 // 使用前必知的三個慣例：
 // 1. 回傳 bool 的操作（alloc/out/set/each…）一律「true = 失敗 / 越界 / 提早中斷」，

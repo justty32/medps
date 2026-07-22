@@ -15,6 +15,8 @@
 - 2026-07-22（晚）：出兩份藍圖文檔，**均未動工**——(1) [workflows/plans/save-format-position-z.md](workflows/plans/save-format-position-z.md)：P0 動工計畫（存檔 magic+version、Position 補 int16_t z、movement 收口 move_by），經稽核員對照實碼修訂（要點：medp 唯一 TU 是 zone_manager.cpp，movement.h 不被建置覆蓋、須臨時 TU 驗證），**待使用者同意動工**；(2) [workflows/specs/zone-addressing-lifecycle-design.md](workflows/specs/zone-addressing-lifecycle-design.md)：定址+生命週期設計 spec（三取向面板+雙評審，贏家最小增量案+11 條補強），**待拍板**——爭點：分桶提前本輪做、save_all 含 Ephemeral、pinned 執行期旗標、tick 重入禁令。測試重建依使用者指示暫緩（頻繁變動期）。
 - 2026-07-22：gcore 大重構（**庫已驗證編譯**：medp/medp_static MinGW 建置綠；tests 仍斷裂）——刪 ZoneKey/GlobalManager/ZoneStore/ZoneMeta/WorldConfig/AreaTerrain/Blocking；新核心 `zone/`（`Zone{id,parent,reg,layers}`、`Tile{uint32×2}`、`ZoneManager` root=0 + 一 zone 一檔存讀）+ `serialize/`（registry_io / zone_io）。**斷裂狀態**：`projects/tests/src/main.cpp` 整套仍對舊架構、不可編譯，「16 項全綠」基準失效；docs/work/ 四份設計文檔（progress_overview、gcore_overview、zone_layers；lifecycle 部分）與 CODE_MAP/CODE_TOUR 均未同步新架構。已拍板未實作：z 不進 zone id。ToME4 研讀建議報告見 [docs/work/design/tome4_recommendations.md](docs/work/design/tome4_recommendations.md)（含落地順序，step 0=重建測試基準）。
 
+- 2026-07-22（P0 落地）：[save-format-position-z 計畫](workflows/plans/save-format-position-z.md)執行完畢（詳見其「執行結果」節）——Task 1 存檔 magic/version **使用者裁定放棄**；Task 2 Position 補 `int z`＋`Zone::layers` 鍵改 `int`（使用者修訂，原計畫 int16_t）；Task 3 move_by 收口＋movement 改吃 `Zone&`。medp 建置綠、movement.h 臨時 TU 過。**open 待辦**：html 導覽層過期未重生（`python3 workflows/common/code-map/html/build.py`）；測試重建仍暫緩；本輪存檔格式 break（Position 佈局變、無版本欄位，舊 .bin 讀不回且不會報格式錯）。
+
 ## 各工作流 session-log
 
 | 工作流 | session-log | open 摘要 |

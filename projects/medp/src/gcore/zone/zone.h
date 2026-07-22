@@ -33,5 +33,5 @@ struct Zone {
     // 直接掛在 Zone 上，不走 ECS——地圖是 zone 的固有結構，不是某個 entity 的屬性。
     // 代價：它不在 registry 裡，所以 registry_io 的 snapshot 不會碰它，
     // 存檔由 serialize/zone_io.h 分兩塊處理。
-    std::map<int16_t, tdarray<Tile>> layers;
+    std::map<int, tdarray<Tile>> layers;
 };

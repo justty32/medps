@@ -50,8 +50,8 @@ public:
     // ---- systems ----
 
     // per-zone 系統。吃 Zone& 而非 entt::registry&，因為系統可能需要地圖
-    //（Zone::layers）而不只是 entity。只用到 entity 的系統包一層即可，例如：
-    //   zm.add_zone_system([](Zone& z){ systems::movement(z.reg); });
+    //（Zone::layers）而不只是 entity。同簽章的自由函式可直接註冊，例如：
+    //   zm.add_zone_system(systems::movement);
     using ZoneSystem = std::function<void(Zone&)>;
 
     // 註冊一個 per-zone 系統；tick() 會依註冊順序執行它們。

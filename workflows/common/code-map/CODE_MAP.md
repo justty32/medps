@@ -7,7 +7,7 @@
 ```text
 projects/medp/src/gcore/          — 遊戲核心框架（EnTT + cereal）
   components/       — POD component
-  systems/          — 吃 entt::registry& 的自由函式系統
+  systems/          — 吃 Zone& 的自由函式系統；位置變更收口於 move_by
   serialize/        — entt⇄cereal adapter、AllComponents 清單、zone_io、zone_store
   util/             — 共用工具
 projects/medp/src/gbind/          — Godot 4 GDExtension facade（薄殼，CMake 第二 target，預設不編）
@@ -25,7 +25,7 @@ docs/work/                        — 歷史分析/設計文檔
 | `projects/medp/src/gcore/zone_key.h` | `ZoneKey`（uint64，打包 ZoneType:16\|x:16\|y:16\|z:16）；`ZoneType{ZONE_ROOT/Invalid, World, Region, Area}`、`zlayer`（Underground/-1、Ground/0、Sky/+1）、`zone_scale` 常數（WORLD_DIM_DEFAULT、WORLD_LAYERS_DEFAULT、REGION_DIM、AREA_DIM）、`make_zone_key` / `world_key` / `region_key` / `area_key` / `parent_of` 換算 |
 | `projects/medp/src/gcore/global_manager.h` / `.cpp` | `GlobalManager`：管理 root + 已載入 zones（get/create/load/unload/add_zone_system/tick/save_all/load_root/init_world/world_config/store） |
 | `projects/medp/src/gcore/components/*.h` | POD component（zone_meta, position, velocity, area_terrain, blocking, world_config） |
-| `projects/medp/src/gcore/systems/movement.h` | movement 系統（吃 `entt::registry&` 的自由函式） |
+| `projects/medp/src/gcore/systems/movement.h` | movement 系統與 `move_by` 收口（吃 `Zone&` 的自由函式） |
 | `projects/medp/src/gcore/serialize/entt_cereal_archive.h` | EnTT snapshot ⇄ cereal `PortableBinaryArchive` 的 archive adapter |
 | `projects/medp/src/gcore/serialize/all_components.h` | `AllComponents` type_list——component 型別清單的**單一來源**；新增 component 必登記 |
 | `projects/medp/src/gcore/serialize/zone_io.h` | 單一 zone 的 snapshot save/load（`zone_io::save/load`） |
@@ -56,7 +56,7 @@ docs/work/                        — 歷史分析/設計文檔
 
 1. **多 registry / zone 生命週期**：一個 zone = 一個 `entt::registry`，由 `GlobalManager` 管理；root 永久存活、放全局實體，其餘 zones 按需載入/卸載。`ZoneKey` 是全局唯一定址，磁碟 path 由 key 推導、不另存全域清單。
 2. **序列化**：EnTT `snapshot` 遍歷 registry，cereal `PortableBinaryArchive` 負責位元格式，透過 `serialize/entt_cereal_archive.h` 橋接。component 型別清單的單一來源是 `serialize/all_components.h` 的 `AllComponents`，save/load 兩邊共用。
-3. **元件即資料**：component 盡量是 POD aggregate；entity 之間的參照存 `entt::entity`。system 寫成吃 `entt::registry&` 的自由函式。
+3. **元件即資料**：component 盡量是 POD aggregate；entity 之間的參照存 `entt::entity`。system 寫成吃 `Zone&` 的自由函式；位置變更一律收口於 `systems::move_by`。
 
 ## 修改前規則
 
