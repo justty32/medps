@@ -35,7 +35,7 @@ cmake -S projects/medp -B projects/medp/build -DMEDP_BUILD_GDEXTENSION=ON && cma
 
 ## 已知環境性失敗
 
-- 15 項測試在乾淨 build 下應全綠；任何紅燈都視為 regression。（2026-07-22 隨 Zone/ZoneManager 新核心整套重寫，Linux g++ 實測 15/15。）
+- 19 項測試在乾淨 build 下應全綠；任何紅燈都視為 regression。（2026-07-22 隨 Zone/ZoneManager 新核心整套重寫為 15 項；同日 World 子類落地加 4 項——kind round-trip、generate 決定性/sanity、未知 kind fail-fast，Linux g++ 實測 19/19。）
 - **MinGW Makefiles 偶發**：建 `medp_static` 時 `ar` 打包可能報 `Error running link command: unknown error`（`ar` 本身正常，重跑 `cmake --build projects/medp/build` 即過）。非 regression。
 
 ## 何時不用

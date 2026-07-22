@@ -39,7 +39,10 @@ World 200×200 → 4 萬個 Region × 225 = 最多約 **900 萬個 Area**。永�
   舊 ZoneKey 的位元打包（type/x/y/z）、`parent_of()` 整除回推、`zone_scale` 常數已全部移除。
 - 層級只活在 `Zone::parent` 鏈上；「child 在 parent 地圖上的哪一格」的結構性連結（ChildLink/anchor）
   已有設計草稿但 defer，見 [spec 拍板結果](../../../workflows/specs/zone-addressing-lifecycle-design.md)。
-- 「World/Region/Area 是第幾層、尺度多大」將由 parent 深度＋玩法層資料表達，不烤進 id；
+- 「World/Region/Area 各層的行為與專屬資料」改由 **Zone 子類**表達（2026-07-22 拍板變更，取代原「parent 深度＋玩法層資料」路線）：
+  第一個子類 `World`（worldgen：seed＋參數 → libtcod FBM 產 200×200 水陸/biome 地圖）已落地，
+  見 [world-zone-subclass spec](../../../workflows/specs/world-zone-subclass-design.md)。
+  kind 仍不進 id（id 維持零語意序號，型別存 zone 檔頭 tag）；層級鏈仍活在 `Zone::parent`；
   tick 依層細分（不同時間模型）尚未動工。
 
 ## 開啟事項

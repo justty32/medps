@@ -9,7 +9,7 @@
 | 路徑 | 內容 |
 |------|------|
 | `projects/` | 各獨立、平級的子專案（見下）|
-| `projects/medp/` | 後端函式庫（`medp`）：`src/` 原始碼、`include/` 第三方 header-only 庫（entt、cereal，**不修改**）、`data/` 執行期資料、`CMakeLists.txt`、`build/`（產出，不 commit）。程式碼導航見 [CODE_MAP](workflows/common/code-map/CODE_MAP.md)、線性導讀見 [CODE_TOUR](workflows/common/code-map/CODE_TOUR.md) |
+| `projects/medp/` | 後端函式庫（`medp`）：`src/` 原始碼、`include/` 第三方 header-only 庫（entt、cereal，**不修改**）、libtcod（編譯型依賴，CMake FetchContent 鎖 2.2.2 headless 引入，configure 需網路）、`data/` 執行期資料、`CMakeLists.txt`、`build/`（產出，不 commit）。程式碼導航見 [CODE_MAP](workflows/common/code-map/CODE_MAP.md)、線性導讀見 [CODE_TOUR](workflows/common/code-map/CODE_TOUR.md) |
 | `projects/tests/` | 測試（獨立專案）；跑法見 [workflows/testing.md](workflows/testing.md) |
 | `projects/archived/` | 重寫前的舊原型碼與草稿（非源碼，已凍結）|
 | `workflows/` | 開發工作流（入口見 [WORKFLOWS.md](WORKFLOWS.md)）|

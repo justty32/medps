@@ -41,6 +41,18 @@ if(NOT MEDP_STATIC_LIB)
 		"或以 -DMEDP_LIB_DIR=<路徑> 指定已建好的庫所在目錄（目前找的是 ${MEDP_LIB_DIR}）。")
 endif()
 
+# medp_static 內的 World::generate 用到 libtcod（medp 以 FetchContent 建置，
+# 靜態庫隨 medp 落在同一個 build/bin）；本專案 link 的是裸 .a、無 target 傳遞，
+# 得自己一併連上。
+find_library(TCOD_STATIC_LIB
+	NAMES tcod libtcod
+	PATHS "${MEDP_LIB_DIR}"
+	NO_DEFAULT_PATH)
+if(NOT TCOD_STATIC_LIB)
+	message(FATAL_ERROR
+		"找不到 libtcod 靜態庫（應隨 medp 建置產出於 ${MEDP_LIB_DIR}）。請先（重新）建置 medp。")
+endif()
+
 set(SRC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 file(GLOB_RECURSE src
@@ -54,7 +66,7 @@ add_executable(${PROJ} ${src})
 target_include_directories(${PROJ} PRIVATE
 	"${MEDP_DIR}/src"
 	"${MEDP_DIR}/include")
-target_link_libraries(${PROJ} "${MEDP_STATIC_LIB}")
+target_link_libraries(${PROJ} "${MEDP_STATIC_LIB}" "${TCOD_STATIC_LIB}")
 
 if(CMAKE_GENERATOR MATCHES "Visual Studio")
 	target_link_libraries(${PROJ} winmm)

@@ -39,7 +39,8 @@ public:
     // 建立一個新 zone，id 由內部單調序號配發（永不復用），parent 必須已
     // 在記憶體中（否則 throw）。配發後即更新 manifest；若配到的 id 在磁碟
     // 上已有檔案（manifest 損毀/回退的徵兆）→ throw，絕不靜默覆寫。
-    Zone& create_child(ZoneId parent);
+    // kind 決定建構的子類（預設 Plain）；拿子類介面用 zone_cast<T>。
+    Zone& create_child(ZoneId parent, ZoneKind kind = ZoneKind::Plain);
 
     // 銷毀一個 zone：移出記憶體，並同步刪除盤上檔案（否則之後 load 會把
     // 死 zone 靜默復活）。id 為 ZONE_ROOT 時什麼都不做。
@@ -81,7 +82,8 @@ public:
     void tick();
 
 private:
-    Zone& emplace_zone(ZoneId id, ZoneId parent);  // 純記憶體建構，不配號、不碰磁碟
+    // 純記憶體建構（經 make_zone 工廠），不配號、不碰磁碟
+    Zone& emplace_zone(ZoneId id, ZoneId parent, ZoneKind kind);
     void  write(Zone& z);                          // zone -> 檔案
     void  write_manifest();                        // next_id_ -> manifest.bin（tmp+rename 原子寫）
 

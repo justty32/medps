@@ -47,6 +47,27 @@ add_library("${PROJ}_static" STATIC ${src})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_directories(${PROJ} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 
+# ---- third-party: libtcod（headless 演算法半邊：noise/heightmap/RNG）----
+# 只取純運算模組：SDL/zlib/PNG/unicode 全關（libtcod 以 NO_SDL/TCOD_NO_* 巨集
+# 自行裁掉對應面），stb 用其 repo 內 vendored 源——configure 期只需抓 libtcod 本體。
+# 靜態庫繼承上方 CMAKE_ARCHIVE_OUTPUT_DIRECTORY 落到 build/bin，
+# tests 專案（find_library 連 .a、無 target 傳遞）在同目錄一併連它。
+include(FetchContent)
+set(LIBTCOD_SDL3     OFF        CACHE BOOL   "" FORCE)
+set(LIBTCOD_ZLIB     OFF        CACHE BOOL   "" FORCE)
+set(LIBTCOD_LODEPNG  OFF        CACHE STRING "" FORCE)
+set(LIBTCOD_UTF8PROC OFF        CACHE STRING "" FORCE)
+set(LIBTCOD_STB      "vendored" CACHE STRING "" FORCE)
+set(LIBTCOD_INSTALL  OFF        CACHE BOOL   "" FORCE)
+FetchContent_Declare(libtcod
+    GIT_REPOSITORY https://github.com/libtcod/libtcod
+    GIT_TAG        2.2.2   # = commit 27c2dbc，libtcod cookbook 分析所據版本
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(libtcod)
+
+target_link_libraries(${PROJ} PRIVATE libtcod::libtcod)
+target_link_libraries("${PROJ}_static" PRIVATE libtcod::libtcod)
+
 # 測試現為平級獨立專案 projects/tests，自行 find/link 本專案的 medp_static，
 # 不再由此 add_subdirectory。
 

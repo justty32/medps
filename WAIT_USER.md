@@ -13,6 +13,7 @@
 
 ## Open
 
+- **待過目** World 子類落地（[spec＋落地備註](workflows/specs/world-zone-subclass-design.md)，三題經你拍板後直接動工；**測試 19/19 綠**，基準 15→19）——(1) `projects/medp/src/gcore/zone/zone.h:17,46-71`：`ZoneKind`＋virtual dtor＋extra 掛鉤＋`make_zone` 工廠＋`zone_cast<T>`（Zone 從此不可移動，只經 unique_ptr 持有）；(2) `projects/medp/src/gcore/zone/world.h`/`.cpp`：`World : Zone`＋`WorldGenParams`＋`generate()`（libtcod FBM 高度→水陸→biome，同 seed 同圖）；(3) `projects/medp/src/gcore/serialize/zone_io.h:25-49`：檔頭 kind tag、load 改回傳 `unique_ptr<Zone>`（**存檔格式已變，舊存檔目錄請手動刪除**）；(4) `projects/medp/CMakeLists.txt:50-69`：libtcod 2.2.2 headless FetchContent（首次 configure 需網路）。看點：generate 的 biome 佔位分類（world.cpp:44-53）是否符合你要的第一版粒度。另：CODE_MAP Runtime 表原停在重構前（還列著 zone_key/global_manager/zone_store），已按現行程式碼修正。
 - **待過目** docs/work 四份文檔同步新核心 — [progress_overview](docs/work/progress_overview.md)（全面重寫的進度快照）、[gcore_overview](docs/work/architecture/gcore_overview.md)（新核心逐檔導覽）、[zone_layers](docs/work/design/zone_layers.md)（**定位變更**：降級為設計願景＋實作現況，三層尺度仍有效）、[lifecycle](docs/work/design/lifecycle.md)（名詞對齊 ZoneManager）。看點：zone_layers 的「實作現況」節是否符合你對三層願景的想法；另 `docs/references/zone_streaming_architecture.md` 教學仍是舊架構（index 卡片已標過期），要不要重寫等你裁定。
 - **待過目＋親自驗證** html 導覽層已隨新核心重生（[index](workflows/common/code-map/html/index.html)，8 站：01-util…08-gbind）——請瀏覽器開啟看新站台切分與嵌入原始碼是否合意。
 - **待過目** `projects/tests/src/main.cpp` — 測試套件整套重寫對應新核心，**15/15 綠**，取代舊 16 項基準。看點：case 總表在檔尾 `main()`；`test_open_protocol_guards`／`test_load_id_mismatch_throws` 是新增的損毀防護驗證；`test_tick_all_zones` 明文固定「root 也參加 tick」的新語意（舊架構 root 不參加）。

@@ -1,4 +1,5 @@
 #include <gcore/zone/zone.h>
+#include <gcore/zone/world.h>
 #include <gcore/zone/zone_manager.h>
 #include <gcore/zone/tile.h>
 #include <gcore/components/position.h>
@@ -112,19 +113,33 @@ static bool test_zone_io_roundtrip() {
 
     std::stringstream ss;
     zone_io::save(src, ss);
-    Zone dst;
-    zone_io::load(dst, ss);
+    auto dst = zone_io::load(ss);        // load = 讀檔頭 kind tag＋建構一體
 
-    CHECK("id/parent",   dst.id == 9 && dst.parent == 4);
-    CHECK("layer count", dst.layers.size() == 2);
-    Tile t = dst.layers[0].getval(0, 1);
+    CHECK("plain kind",  dst->kind() == ZoneKind::Plain);
+    CHECK("id/parent",   dst->id == 9 && dst->parent == 4);
+    CHECK("layer count", dst->layers.size() == 2);
+    Tile t = dst->layers[0].getval(0, 1);
     CHECK("tile data",   t.terrain == 3 && (t.flags & TILE_BLOCKS_SIGHT));
     bool pos_ok = false;
-    for (auto en : dst.reg.view<Position>()) {
-        auto& p = dst.reg.get<Position>(en);
+    for (auto en : dst->reg.view<Position>()) {
+        auto& p = dst->reg.get<Position>(en);
         pos_ok = (p.x == 5 && p.y == 6 && p.z == -1);
     }
     CHECK("entity data", pos_ok);
+    return true;
+}
+
+static bool test_zone_io_unknown_kind_throws() {
+    // 檔頭 kind tag 為未知值 → make_zone throw（存檔損毀 fail-fast，不靜默退回 Plain）
+    std::stringstream ss;
+    {
+        cereal::PortableBinaryOutputArchive ar{ss};
+        uint8_t bogus = 0xFF;
+        ar(bogus);
+    }
+    bool threw = false;
+    try { zone_io::load(ss); } catch (const std::runtime_error&) { threw = true; }
+    CHECK("unknown kind throws", threw);
     return true;
 }
 
@@ -272,6 +287,76 @@ static bool test_load_id_mismatch_throws() {
     return true;
 }
 
+// ---- World（第一個 Zone 子類）----
+
+static bool test_world_kind_roundtrip() {
+    auto dir = fresh_dir("world_kind");
+    ZoneManager::ZoneId wid = 0;
+    {   // session 1：造一個 World 子 zone、改生成參數、存檔
+        ZoneManager zm{dir};
+        auto& z = zm.create_child(ZONE_ROOT, ZoneKind::World);
+        auto* w = zone_cast<World>(&z);
+        CHECK("created as World", w != nullptr);
+        w->gen.seed  = 1234;
+        w->gen.width = 8;
+        wid = w->id;
+        zm.save_all();
+    }
+    {   // session 2：載回後子類型別與 gen 參數完整還原
+        ZoneManager zm{dir};
+        CHECK("loadable", zm.load(wid));
+        auto* w = zone_cast<World>(zm.get(wid));
+        CHECK("kind restored", w != nullptr);
+        CHECK("gen restored",  w->gen.seed == 1234 && w->gen.width == 8);
+        CHECK("root stays plain", zone_cast<World>(&zm.root()) == nullptr);
+    }
+    fs::remove_all(dir);
+    return true;
+}
+
+static bool test_world_generate_deterministic() {
+    World a, b, c;
+    a.gen.seed = b.gen.seed = 42;
+    c.gen.seed = 43;
+    for (World* w : {&a, &b, &c}) { w->gen.width = 32; w->gen.height = 32; w->generate(); }
+
+    bool same = true, diff = false;
+    a.layers[0].eachxy([&](Tile& t, int x, int y) {
+        Tile tb = b.layers[0].getval(x, y);
+        if (t.terrain != tb.terrain || t.flags != tb.flags) same = false;
+        if (t.terrain != c.layers[0].getval(x, y).terrain) diff = true;
+    });
+    CHECK("same seed same map",      same);
+    CHECK("diff seed diff map",      diff);
+    return true;
+}
+
+static bool test_world_generate_sanity() {
+    World w;
+    w.gen.seed = 7;
+    w.gen.width = 64;
+    w.gen.height = 48;
+    w.generate();
+
+    auto& g = w.layers[0];
+    CHECK("dims match params", g.sx == 64 && g.sy == 48);
+    int ocean = 0, land = 0;
+    bool flags_ok = true;
+    g.each([&](Tile& t) {
+        if (t.terrain == TERRAIN_OCEAN) { ++ocean; if (t.flags & TILE_WALKABLE)    flags_ok = false; }
+        else                            { ++land;  if (!(t.flags & TILE_WALKABLE)) flags_ok = false; }
+    });
+    CHECK("has ocean and land",   ocean > 0 && land > 0);
+    CHECK("walkable = land only", flags_ok);
+
+    World bad;
+    bad.gen.width = 0;
+    bool threw = false;
+    try { bad.generate(); } catch (const std::runtime_error&) { threw = true; }
+    CHECK("non-positive dims throw", threw);
+    return true;
+}
+
 // ---- movement ----
 
 static bool test_move_by() {
@@ -345,6 +430,7 @@ int main() {
         { "registry_empty",            test_registry_empty            },
         { "tdarray_basics",            test_tdarray_basics            },
         { "zone_io_roundtrip",         test_zone_io_roundtrip         },
+        { "zone_io_unknown_kind_throws", test_zone_io_unknown_kind_throws },
         { "new_world",                 test_new_world                 },
         { "create_child_ids",          test_create_child_ids          },
         { "persist_across_sessions",   test_persist_across_sessions   },
@@ -352,6 +438,9 @@ int main() {
         { "destroy_deletes_file",      test_destroy_deletes_file      },
         { "open_protocol_guards",      test_open_protocol_guards      },
         { "load_id_mismatch_throws",   test_load_id_mismatch_throws   },
+        { "world_kind_roundtrip",      test_world_kind_roundtrip      },
+        { "world_generate_deterministic", test_world_generate_deterministic },
+        { "world_generate_sanity",     test_world_generate_sanity     },
         { "move_by",                   test_move_by                   },
         { "tick_all_zones",            test_tick_all_zones            },
         { "tick_system_order",         test_tick_system_order         },

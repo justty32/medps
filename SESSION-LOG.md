@@ -21,6 +21,7 @@
 
 - 2026-07-22（測試基準重建）：`projects/tests/src/main.cpp` 整套重寫對應新核心，**15/15 綠**（序列化 roundtrip/orphans/空、tdarray、zone_io 全 Zone 往返、ZoneManager 開檔協定/配號/跨 session 持久化/unload/destroy 刪檔/兩條損毀 throw/load 驗 id、move_by/tick 全 zone/系統順序）。前兩則所稱「測試套件斷裂、基準失效」**已解除**；AGENTS/testing/CODE_MAP/CODE_TOUR 的基準敘述同步為 15 項。～～仍 open：docs/work/ 舊設計文檔未同步；html 導覽層未重生～～（同日稍後已完成，見下則）。
 
+- 2026-07-22（World 子類落地）：[world-zone-subclass spec](workflows/specs/world-zone-subclass-design.md) 三題經使用者拍板（worldgen／libtcod headless／type tag＋工廠）後直接動工，四步全落地——libtcod 2.2.2 headless FetchContent 進 medp CMake；Zone 改繼承基底（virtual dtor＋ZoneKind＋extra 掛鉤＋make_zone 工廠＋zone_cast，**Zone 不可再移動**）；zone 檔頭加 kind tag、`zone_io::load` 改回傳 `unique_ptr<Zone>`（**存檔格式 break**，舊 .bin 作廢）；`World : Zone`（WorldGenParams＋generate：FBM 高度→水陸→biome）。測試 15→**19/19 綠**（基準已同步 AGENTS/testing/CODE_MAP/dev-env）；zone_layers 實作現況改記子類路線。**仍 open**：CODE_TOUR 與 html 導覽層未加 World/繼承機制站點（`python3 workflows/common/code-map/html/build.py` 重生前 html 過期）。
 - 2026-07-22（文檔同步＋html 重生）：docs/work 四份設計文檔同步新核心——progress_overview 全面重寫、gcore_overview 重寫為新核心逐檔導覽、zone_layers 降級為「設計願景＋實作現況」（三層尺度仍有效、ZoneKey 敘述作廢）、lifecycle 名詞對齊 ZoneManager（Ruleset 設計方向不變）。CODE_TOUR 整份重寫（8 站對應新架構）；html 導覽層 build.py 的 STATIONS/INVARIANTS/index 同步後重生（新站台 01-util…08-gbind，舊 01-zone-key/05-global-manager 頁已刪）。**仍 open**：`docs/references/zone_streaming_architecture.md` 教學整份對應舊架構（docs/index.html 卡片已標註過期），重寫另議。
 
 ## 各工作流 session-log

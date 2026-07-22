@@ -20,7 +20,8 @@ idea → roadmap → spec → plan → feature-dev
 
 | 設計方案 | 討論日期 | 對應 idea/roadmap | 狀態 |
 |----------|----------|-------------------|------|
-| [zone-addressing-lifecycle-design](zone-addressing-lifecycle-design.md) | 2026-07-22 | [tome4 報告](../../docs/work/design/tome4_recommendations.md) §2-D/§2-F（§4 step 2） | 待拍板 |
+| [zone-addressing-lifecycle-design](zone-addressing-lifecycle-design.md) | 2026-07-22 | [tome4 報告](../../docs/work/design/tome4_recommendations.md) §2-D/§2-F（§4 step 2） | 已拍板並落地 |
+| [world-zone-subclass-design](world-zone-subclass-design.md) | 2026-07-22 | 使用者發起；libtcod cookbook＋tome4 報告 §1 | 已拍板並落地 |
 
 ## 何時不用
 

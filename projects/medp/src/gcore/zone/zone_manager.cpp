@@ -25,7 +25,7 @@ ZoneManager::ZoneManager(std::filesystem::path dir)
                     throw std::runtime_error(
                         "ZoneManager: 目錄有 zone 檔卻無 manifest，不當新世界處理（疑似損毀）: " +
                         e.path().string());
-        emplace_zone(ZONE_ROOT, ZONE_ROOT);   // 全新世界；root 的 parent 是它自己
+        emplace_zone(ZONE_ROOT, ZONE_ROOT, ZoneKind::Plain);   // 全新世界；root 的 parent 是它自己
     }
 }
 
@@ -34,17 +34,17 @@ Zone* ZoneManager::get(ZoneId id) {
     return (it != zones_.end()) ? it->second.get() : nullptr;
 }
 
-Zone& ZoneManager::emplace_zone(ZoneId id, ZoneId parent) {
+Zone& ZoneManager::emplace_zone(ZoneId id, ZoneId parent, ZoneKind kind) {
     auto [it, inserted] = zones_.try_emplace(id);
     if (inserted) {
-        it->second = std::make_unique<Zone>();
+        it->second = make_zone(kind);
         it->second->id     = id;
         it->second->parent = parent;
     }
     return *it->second;
 }
 
-Zone& ZoneManager::create_child(ZoneId parent) {
+Zone& ZoneManager::create_child(ZoneId parent, ZoneKind kind) {
     if (!zones_.count(parent))
         throw std::runtime_error(
             "ZoneManager::create_child: parent 未載入: parent=" + std::to_string(parent));
@@ -54,7 +54,7 @@ Zone& ZoneManager::create_child(ZoneId parent) {
         throw std::runtime_error(
             "ZoneManager::create_child: 配發的 id 在磁碟上已有檔案（manifest 損毀/回退？）: id=" +
             std::to_string(id));
-    return emplace_zone(id, parent);
+    return emplace_zone(id, parent, kind);
 }
 
 void ZoneManager::destroy(ZoneId id) {
@@ -100,9 +100,8 @@ bool ZoneManager::load(ZoneId id) {
     auto p = path(id);
     if (!std::filesystem::exists(p)) return false;
 
-    auto zone = std::make_unique<Zone>();
     std::ifstream ifs{p, std::ios::binary};
-    zone_io::load(*zone, ifs);           // id / parent 由檔案內容還原
+    auto zone = zone_io::load(ifs);      // kind 由檔頭 tag 決定子類；id / parent 由檔案內容還原
     if (zone->id != id)
         throw std::runtime_error(
             "ZoneManager::load: 檔案內容 id 與請求不符（存檔損毀）: 請求=" + std::to_string(id) +
