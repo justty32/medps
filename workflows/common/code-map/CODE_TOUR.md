@@ -32,7 +32,7 @@ zone id 是零語意的單調序號、由 `create_child` 配發；存讀檔 = �
 
 讀完該能回答：為什麼地圖掛在 Zone 上而不是做成 component？（代價是什麼——registry snapshot 不含它。）
 
-### 第 3 站 `projects/medp/src/gcore/components/`（2 檔，~25 行）— 資料積木
+### 第 3 站 `projects/medp/src/gcore/world/components/`（2 檔，~25 行）— 資料積木
 
 全是 POD aggregate + `serialize()` 成員。
 
@@ -63,7 +63,7 @@ zone id 是零語意的單調序號、由 `create_child` 配發；存讀檔 = �
 
 讀完該能回答：哪三種磁碟狀態會讓建構子 throw？為什麼 create_child 要在建 zone 前先寫 manifest？
 
-### 第 6 站 `projects/medp/src/gcore/systems/movement.h`（26 行）— system 的樣板
+### 第 6 站 `projects/medp/src/gcore/world/systems/movement.h`（26 行）— system 的樣板
 
 `movement.h:20`：所有未來 system 的形狀範本——自由函式、吃 `Zone&`、用 view 遍歷。位置變更一律經 `move_by`（`movement.h:12`）收口，不直改 Position。
 

@@ -1,10 +1,10 @@
 #include <gcore/zone/zone.h>
-#include <gcore/zone/world.h>
+#include <gcore/world/world.h>
 #include <gcore/zone/zone_manager.h>
 #include <gcore/zone/tile.h>
-#include <gcore/components/position.h>
-#include <gcore/components/velocity.h>
-#include <gcore/systems/movement.h>
+#include <gcore/world/components/position.h>
+#include <gcore/world/components/velocity.h>
+#include <gcore/world/systems/movement.h>
 #include <gcore/serialize/registry_io.h>
 #include <gcore/serialize/zone_io.h>
 

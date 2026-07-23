@@ -1,4 +1,4 @@
-#include "world.h"
+#include "world_gen.h"
 #include <stdexcept>
 #include <string>
 #include <libtcod/mersenne.hpp>
@@ -27,18 +27,17 @@ struct Field {
 
 }  // namespace
 
-void World::generate() {
+void world_gen::generate(const WorldGenParams& gen, tdarray<Tile>& grid, uint64_t zone_id) {
     if (gen.width <= 0 || gen.height <= 0)
         throw std::runtime_error(
-            "World::generate: 尺寸非正: " + std::to_string(gen.width) + "x" +
-            std::to_string(gen.height) + " (zone id=" + std::to_string(id) + ")");
+            "world_gen::generate: 尺寸非正: " + std::to_string(gen.width) + "x" +
+            std::to_string(gen.height) + " (zone id=" + std::to_string(zone_id) + ")");
 
     // 高度/溫度/濕度三張獨立場，seed 派生錯開。
     Field height{gen.seed,     gen.noise_scale, gen.octaves};
     Field temp  {gen.seed + 1, gen.noise_scale, gen.octaves};
     Field humid {gen.seed + 2, gen.noise_scale, gen.octaves};
 
-    auto& grid = layers[0];
     grid.alloc(static_cast<uint32_t>(gen.width), static_cast<uint32_t>(gen.height));
 
     grid.eachxy([&](Tile& t, int x, int y) {

@@ -6,9 +6,11 @@
 
 ```text
 projects/medp/src/gcore/          — 遊戲核心框架（EnTT + cereal）
-  components/       — POD component
-  systems/          — 吃 Zone& 的自由函式系統；位置變更收口於 move_by
-  serialize/        — entt⇄cereal adapter、AllComponents 清單、zone_io、zone_store
+  zone/             — 通用 Zone 框架：Zone 基底、ZoneManager、Tile
+  world/            — World : Zone 子類與其專屬物；worldgen、World 尺度資料
+    components/     — World 專屬 POD component
+    systems/        — 吃 Zone& 的自由函式系統；位置變更收口於 move_by
+  serialize/        — entt⇄cereal adapter、AllComponents 清單、zone_io
   util/             — 共用工具
 projects/medp/src/gbind/          — Godot 4 GDExtension facade（薄殼，CMake 第二 target，預設不編）
 projects/medp/include/            — 第三方 header-only 庫（entt、cereal）——不要修改
@@ -23,11 +25,12 @@ docs/work/                        — 歷史分析/設計文檔
 | 檔案 | 職責 |
 |------|------|
 | `projects/medp/src/gcore/zone/zone.h` / `.cpp` | `struct Zone{id, parent, reg, layers}`——繼承基底（virtual dtor，一 zone 一 registry＋多垂直層 tile 地圖，`layers` 鍵即 z）；`ZoneKind` enum（存檔 kind tag）、`make_zone` 工廠（未知 kind throw）、`zone_cast<T>`、`ZONE_ROOT`（id=0）常數 |
-| `projects/medp/src/gcore/zone/world.h` / `.cpp` | `World : Zone` 第一個子類：`WorldGenParams`（隨 extra 塊序列化）＋`generate()`（libtcod FBM 高度場→水陸→biome 寫 `layers[0]`，同 seed 同圖）；biome 佔位 terrain 常數 |
 | `projects/medp/src/gcore/zone/zone_manager.h` / `.cpp` | `ZoneManager`：持有所有 zone＋配號（create_child）＋存讀（load/unload/save_all/destroy/path）＋manifest 開檔協定＋system 註冊與 tick；三條契約（tick 重入禁令、單槽活儲存、Zone* 不跨 tick）見檔頭註解 |
 | `projects/medp/src/gcore/zone/tile.h` | `Tile{terrain, flags}` 與 `TILE_WALKABLE`/`TILE_BLOCKS_SIGHT` flag 常數 |
-| `projects/medp/src/gcore/components/*.h` | POD component（position【x/y/z】, velocity） |
-| `projects/medp/src/gcore/systems/movement.h` | movement 系統與 `move_by` 收口（吃 `Zone&` 的自由函式） |
+| `projects/medp/src/gcore/world/world.h` / `.cpp` | `World : Zone` 第一個子類：持 `WorldGenParams gen`（隨 extra 塊序列化）＋`save_extra`/`load_extra`；`generate()` 是薄殼，挑 `layers[0]` 呼 `world_gen::generate(gen, layers[0], id)` |
+| `projects/medp/src/gcore/world/world_gen.h` / `.cpp` | worldgen 模組（不依賴 World 型別，只認配方＋一張 grid）：`WorldGenParams`（生成配方）＋biome 佔位 terrain 常數＋`world_gen::generate(const WorldGenParams&, tdarray<Tile>&, uint64_t zone_id=0)`（libtcod FBM 高度場→sea_level 水陸→溫/濕度分 biome，內部 alloc 整層重寫，同 seed 同圖；libtcod 依賴收在 .cpp 不外洩） |
+| `projects/medp/src/gcore/world/components/*.h` | World 專屬 POD component（position【x/y/z】, velocity） |
+| `projects/medp/src/gcore/world/systems/movement.h` | movement 系統與 `move_by` 收口（吃 `Zone&` 的自由函式） |
 | `projects/medp/src/gcore/serialize/entt_cereal_archive.h` | EnTT snapshot ⇄ cereal `PortableBinaryArchive` 的 archive adapter |
 | `projects/medp/src/gcore/serialize/registry_io.h` | 單一 registry 的 snapshot save/load |
 | `projects/medp/src/gcore/serialize/all_components.h` | `AllComponents` type_list——component 型別清單的**單一來源**；新增 component 必登記 |

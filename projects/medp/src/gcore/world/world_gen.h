@@ -1,5 +1,10 @@
 #pragma once
-#include "zone.h"
+#include <cstdint>
+#include "../util/tdarray.hpp"
+#include "../zone/tile.h"
+
+// World 的 worldgen 配方＋terrain 詞彙＋生成入口。演算法本體（libtcod FBM）在 .cpp，
+// libtcod 依賴不外洩。本模組只認「配方＋一張 tile 格網」，不依賴 World 型別。
 
 // biome 佔位 def id（寫進 Tile::terrain）。0 保留為「未生成」。
 // 將來 Ruleset 的 terrain def 表落地時整組搬遷；屆時存檔照政策作廢重生。
@@ -21,19 +26,11 @@ struct WorldGenParams {
     void serialize(Archive& ar) { ar(width, height, seed, sea_level, noise_scale, octaves); }
 };
 
-// 第一個 Zone 子類：世界層地圖（三層願景的最上層，時間模型純回合——tick 分派未動工）。
-// 只放 worldgen 與世界尺度資料；全局實體仍歸 root，別把全局邏輯堆進來。
-struct World : Zone {
-    WorldGenParams gen;
+namespace world_gen {
 
-    static constexpr ZoneKind KIND = ZoneKind::World;
-    ZoneKind kind() const override { return KIND; }
+// 依 gen 重建單一 layer 的 grid：FBM 高度場 → sea_level 切水陸 → 溫/濕度場分 biome，
+// 寫 Tile::terrain＋陸地設 TILE_WALKABLE。整層清掉重寫（內部 alloc），不做增量；
+// 同 seed 必產同圖（決定性）。尺寸非正 → throw（zone_id 僅供錯誤訊息定位）。
+void generate(const WorldGenParams& gen, tdarray<Tile>& grid, uint64_t zone_id = 0);
 
-    void save_extra(cereal::PortableBinaryOutputArchive& ar) override { ar(gen); }
-    void load_extra(cereal::PortableBinaryInputArchive& ar) override { ar(gen); }
-
-    // 依 gen 重建 layers[0]：FBM 高度場 → sea_level 切水陸 → 溫/濕度場分 biome，
-    // 寫 Tile::terrain＋陸地設 TILE_WALKABLE。整層清掉重寫，不做增量；
-    // 同 seed 必產同圖（決定性）。尺寸非正 → throw。
-    void generate();
-};
+}  // namespace world_gen

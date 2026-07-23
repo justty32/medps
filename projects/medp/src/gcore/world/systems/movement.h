@@ -2,7 +2,7 @@
 #include <entt.hpp>
 #include "../components/position.h"
 #include "../components/velocity.h"
-#include "../zone/zone.h"
+#include "../../zone/zone.h"
 
 namespace systems {
 

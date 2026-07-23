@@ -1,5 +1,5 @@
 #include "zone.h"
-#include "world.h"
+#include "../world/world.h"
 #include <stdexcept>
 #include <string>
 
