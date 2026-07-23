@@ -7,8 +7,10 @@
 ```text
 projects/medp/src/gcore/          — 遊戲核心框架（EnTT + cereal）
   zone/             — 通用 Zone 框架：Zone 基底、ZoneManager、Tile
+  common/           — 多數 Zone 子類共用的組件/系統；actor（地點/部隊）家族
+    components/     — 共用 POD component（Name/Owner/Location/Unit）
   world/            — World : Zone 子類與其專屬物；worldgen、World 尺度資料
-    components/     — World 專屬 POD component
+    components/     — World 專屬 POD component（Position/Velocity）
     systems/        — 吃 Zone& 的自由函式系統；位置變更收口於 move_by
   serialize/        — entt⇄cereal adapter、AllComponents 清單、zone_io
   util/             — 共用工具
@@ -27,6 +29,8 @@ docs/work/                        — 歷史分析/設計文檔
 | `projects/medp/src/gcore/zone/zone.h` / `.cpp` | `struct Zone{id, parent, reg, layers}`——繼承基底（virtual dtor，一 zone 一 registry＋多垂直層 tile 地圖，`layers` 鍵即 z）；`ZoneKind` enum（存檔 kind tag）、`make_zone` 工廠（未知 kind throw）、`zone_cast<T>`、`ZONE_ROOT`（id=0）常數 |
 | `projects/medp/src/gcore/zone/zone_manager.h` / `.cpp` | `ZoneManager`：持有所有 zone＋配號（create_child）＋存讀（load/unload/save_all/destroy/path）＋manifest 開檔協定＋system 註冊與 tick；三條契約（tick 重入禁令、單槽活儲存、Zone* 不跨 tick）見檔頭註解 |
 | `projects/medp/src/gcore/zone/tile.h` | `Tile{terrain, flags}` 與 `TILE_WALKABLE`/`TILE_BLOCKS_SIGHT` flag 常數 |
+| `projects/medp/src/gcore/common/actor.h` | actor 與種類 def 的工廠：`define_location`/`define_unit`（在 root 建種類 def，吃 `Zone&`＋fail-fast 檢查 `id==ZONE_ROOT`）、`find_location_def`/`find_unit_def`（依 id 於 root 解析 def，線性掃）、`spawn_location`/`spawn_unit`（在某 zone 建 actor：Name＋Owner＋家族 tag{kind=def id}，放置=Position 刻意分離）。actor＝地點/部隊兩大家族的共同基底，在 ECS 裡由共用元件表達而非 C++ 父類 |
+| `projects/medp/src/gcore/common/components/*.h` | 共用 POD component。身分：`Name{value}`（含 cereal string）、`Owner{faction}`（陣營穩定 id，0=中立）。種類為**資料驅動 def**（非 enum）：def 元件 `LocationKind{id}`/`UnitKind{id}` 掛在 root 的定義實體上（開放集合，將來由 Ruleset 載入）；actor 家族 tag `Location{kind}`/`Unit{kind}` 住在 zone、以穩定 id 參照 def |
 | `projects/medp/src/gcore/world/world.h` / `.cpp` | `World : Zone` 第一個子類：持 `WorldGenParams gen`（隨 extra 塊序列化）＋`save_extra`/`load_extra`；`generate()` 是薄殼，挑 `layers[0]` 呼 `world_gen::generate(gen, layers[0], id)` |
 | `projects/medp/src/gcore/world/world_gen.h` / `.cpp` | worldgen 模組（不依賴 World 型別，只認配方＋一張 grid）：`WorldGenParams`（生成配方）＋biome 佔位 terrain 常數＋`world_gen::generate(const WorldGenParams&, tdarray<Tile>&, uint64_t zone_id=0)`（libtcod FBM 高度場→sea_level 水陸→溫/濕度分 biome，內部 alloc 整層重寫，同 seed 同圖；libtcod 依賴收在 .cpp 不外洩） |
 | `projects/medp/src/gcore/world/components/*.h` | World 專屬 POD component（position【x/y/z】, velocity） |

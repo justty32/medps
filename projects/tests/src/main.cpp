@@ -5,6 +5,7 @@
 #include <gcore/world/components/position.h>
 #include <gcore/world/components/velocity.h>
 #include <gcore/world/systems/movement.h>
+#include <gcore/common/actor.h>
 #include <gcore/serialize/registry_io.h>
 #include <gcore/serialize/zone_io.h>
 
@@ -421,6 +422,90 @@ static bool test_tick_system_order() {
     return true;
 }
 
+// ---- actor（地點 / 部隊 兩大家族）----
+
+// 種類是 root 底下的資料驅動 def（非 enum）；actor 以穩定 id 參照它。
+static bool test_actor_defs_and_spawn() {
+    // def 一律掛在 root（id 手動配發，將來由 Ruleset）
+    Zone root;  // id 預設 0 = ZONE_ROOT
+    actor::define_location(root, 1, "城市");
+    actor::define_location(root, 4, "城堡");
+    actor::define_unit(root,     10, "開拓者");
+
+    CHECK("location defs registered", root.reg.view<LocationKind>().size() == 2);
+    CHECK("unit defs registered",     root.reg.view<UnitKind>().size() == 1);
+
+    // 依 id 解析 def → 拿到它的顯示名
+    auto castle_def = actor::find_location_def(root, 4);
+    CHECK("def resolvable by id", castle_def != entt::null);
+    CHECK("def name",             root.reg.get<Name>(castle_def).value == "城堡");
+    CHECK("unknown id → null",    actor::find_location_def(root, 999) == entt::null);
+
+    // 非 root 傳進 define_* → fail-fast throw
+    Zone not_root; not_root.id = 7;
+    bool threw = false;
+    try { actor::define_location(not_root, 2, "村莊"); } catch (const std::runtime_error&) { threw = true; }
+    CHECK("define on non-root throws", threw);
+
+    // zone 端：actor 以 def id 指定種類
+    entt::registry zone;
+    auto capital = actor::spawn_location(zone, 1, "首都",   1);
+    auto scout   = actor::spawn_unit(zone,     10, "拓荒隊", 1);
+
+    CHECK("capital is location, not unit", zone.all_of<Location>(capital) && !zone.all_of<Unit>(capital));
+    CHECK("capital kind → def id",         zone.get<Location>(capital).kind == 1);
+    CHECK("capital named",                 zone.get<Name>(capital).value == "首都");
+    CHECK("capital owner",                 zone.get<Owner>(capital).faction == 1);
+    CHECK("scout is unit, not location",   zone.all_of<Unit>(scout) && !zone.all_of<Location>(scout));
+    CHECK("scout kind → def id",           zone.get<Unit>(scout).kind == 10);
+
+    // 兩大家族各自可獨立遍歷
+    CHECK("one of each family", zone.view<Location>().size() == 1 && zone.view<Unit>().size() == 1);
+    return true;
+}
+
+static bool test_actor_roundtrip() {
+    // def 在 root：驗 LocationKind/UnitKind＋Name 存讀往返
+    Zone root;
+    actor::define_location(root, 4, "城堡");
+    actor::define_unit(root,    11, "流民");
+    std::stringstream ss_root;
+    registry_io::save(root.reg, ss_root);
+    entt::registry root_dst;
+    registry_io::load(root_dst, ss_root);
+
+    CHECK("location def survived", root_dst.view<LocationKind>().size() == 1);
+    CHECK("unit def survived",     root_dst.view<UnitKind>().size() == 1);
+    bool def_ok = false;
+    for (auto e : root_dst.view<LocationKind, Name>())
+        if (root_dst.get<LocationKind>(e).id == 4 && root_dst.get<Name>(e).value == "城堡") def_ok = true;
+    CHECK("def fields roundtrip (id＋中文 Name)", def_ok);
+
+    // actor 在 zone：驗 Location/Unit＋Name＋Owner 存讀往返
+    entt::registry zone;
+    actor::spawn_location(zone, 4,  "北境要塞", 2);
+    actor::spawn_unit(zone,     11, "流民團",   0);  // 無主
+    std::stringstream ss_zone;
+    registry_io::save(zone, ss_zone);
+    entt::registry zone_dst;
+    registry_io::load(zone_dst, ss_zone);
+
+    CHECK("location actor survived", zone_dst.view<Location>().size() == 1);
+    CHECK("unit actor survived",     zone_dst.view<Unit>().size() == 1);
+    bool loc_ok = false, unit_ok = false;
+    for (auto e : zone_dst.view<Location, Name, Owner>()) {
+        auto& l = zone_dst.get<Location>(e); auto& n = zone_dst.get<Name>(e); auto& o = zone_dst.get<Owner>(e);
+        if (l.kind == 4 && n.value == "北境要塞" && o.faction == 2) loc_ok = true;
+    }
+    for (auto e : zone_dst.view<Unit, Name, Owner>()) {
+        auto& u = zone_dst.get<Unit>(e); auto& n = zone_dst.get<Name>(e); auto& o = zone_dst.get<Owner>(e);
+        if (u.kind == 11 && n.value == "流民團" && o.faction == 0) unit_ok = true;
+    }
+    CHECK("location actor fields roundtrip", loc_ok);
+    CHECK("unit actor fields roundtrip",     unit_ok);
+    return true;
+}
+
 // ---- 執行器 ----
 
 int main() {
@@ -444,6 +529,8 @@ int main() {
         { "move_by",                   test_move_by                   },
         { "tick_all_zones",            test_tick_all_zones            },
         { "tick_system_order",         test_tick_system_order         },
+        { "actor_defs_and_spawn",      test_actor_defs_and_spawn      },
+        { "actor_roundtrip",           test_actor_roundtrip           },
     };
 
     int passed = 0, total = 0;
