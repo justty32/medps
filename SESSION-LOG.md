@@ -8,6 +8,8 @@
 
 ## 最新進度
 
+- 2026-07-24：**策略遊戲可玩原型落地** — 新建 `projects/game/`（CMakeLists.txt + 4 個 .h/.cpp），接 medp_static + libtcod_static，MinGW 建置一次過（`[100%] Built target medp_game`）。80×40 世界地圖 ASCII 顯示（FBM biome），玩家 2 城 3 部隊 vs AI 2 城 3 部隊，完整回合制輸入（Enter 選取、方向鍵移動、S 略過、T 結束回合、Q 離開），貪婪 AI，戰鬥＋佔城邏輯，勝/敗判定。**待使用者親自執行驗證**（見 WAIT_USER.md）。
+
 - 2026-07-10：導入 workflow 組織形式（minimal adoption）；AGENTS.md 改為路由器、CLAUDE.md 改為薄入口、模組速查移入 CODE_MAP。
 - 2026-07-10：新增人用導讀 CODE_TOUR、resync 工作流（使用者親改接手）、DAVID 標記協定、WAIT_USER「待過目」佇列。
 - 地基階段已完成（zone 系統精簡重構落地，16/16 測試綠）；遊戲玩法內容尚未動工，候選方向見 [docs/work/progress_overview.md](docs/work/progress_overview.md) 末段。
