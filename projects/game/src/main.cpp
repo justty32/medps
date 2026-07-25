@@ -1,18 +1,7 @@
 #include <cstdio>
 #include <stdexcept>
-#ifdef _WIN32
-  #include <conio.h>
-#endif
 #include "display.h"
 #include "game.h"
-
-static void wait_any_key() {
-#ifdef _WIN32
-    _getch();
-#else
-    getchar();
-#endif
-}
 
 int main() {
     disp::init();
@@ -22,18 +11,19 @@ int main() {
         game.init("./game_save");
         game.run();
     } catch (const std::exception& ex) {
-        disp::shutdown();
-        printf("\n\n[錯誤] %s\n", ex.what());
+        // 先等鍵再 shutdown：此時終端仍在 raw mode，wait_key() 才是真的「按任意鍵」。
+        printf("\033[0m\n\n[錯誤] %s\n", ex.what());
         printf("Press any key to exit...\n");
         fflush(stdout);
-        wait_any_key();
+        disp::wait_key();
+        disp::shutdown();
         return 1;
     } catch (...) {
-        disp::shutdown();
-        printf("\n\n[未知錯誤] 遊戲崩潰\n");
+        printf("\033[0m\n\n[未知錯誤] 遊戲崩潰\n");
         printf("Press any key to exit...\n");
         fflush(stdout);
-        wait_any_key();
+        disp::wait_key();
+        disp::shutdown();
         return 1;
     }
 
