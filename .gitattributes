@@ -1,0 +1,71 @@
+# 換行規則
+#
+# repo 內一律 LF，**工作區也一律 LF**（`eol=lf`）——本專案同時在 Windows
+# （MinGW）與 Linux（Manjaro）上開發，見 workflows/dev-env.md。
+#
+# 為什麼連工作區都釘 LF，而不是只靠 core.autocrlf：
+#   - autocrlf=true 會在每次 stage 時噴 "LF will be replaced by CRLF" 警告；
+#   - 兩個平台各自 checkout 出不同換行時，容易 diff 出整檔變動；
+#   - .gitattributes 的設定優先於 core.autocrlf，所以規則跟著 repo 走，
+#     不依賴每台機器的 git 設定是否一致。
+#
+# 現況（2026-08-12 建檔時）：版控中僅 README.md 的 blob 帶 CRLF，其餘
+# 早已是 LF，故導入本檔只需 renormalize 該一檔。
+
+* text=auto eol=lf
+
+# --- 明確標示文字檔 ---
+# 保險用：檔案內容過短或含特殊位元組時，text=auto 的自動偵測可能失準。
+
+*.md            text eol=lf
+*.txt           text eol=lf
+*.h             text eol=lf
+*.hpp           text eol=lf
+*.cpp           text eol=lf
+*.py            text eol=lf
+*.js            text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+*.gd            text eol=lf
+*.gdextension   text eol=lf
+*.json          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+CMakeLists.txt  text eol=lf
+*.cmake         text eol=lf
+
+# --- 腳本：換行是可執行性的一部分 ---
+# POSIX shell 帶 CRLF 會讓 shebang 解析失敗；Windows 批次檔則相反。
+
+*.sh            text eol=lf
+*.bash          text eol=lf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf
+
+# --- 二進位：不轉換換行、不做文字 diff ---
+# 多數是 build 產出（已在 .gitignore），列出來是防止日後誤加。
+
+*.bin           binary
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.ttf           binary
+*.otf           binary
+*.woff          binary
+*.woff2         binary
+*.zip           binary
+*.7z            binary
+*.pdf           binary
+*.exe           binary
+*.dll           binary
+*.so            binary
+*.dylib         binary
+*.a             binary
+*.lib           binary
+*.o             binary
+*.obj           binary
+*.pck           binary
+*.import        binary
