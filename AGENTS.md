@@ -8,6 +8,7 @@
 - 主要語言/框架：C++20、EnTT（ECS）、cereal（序列化）、CMake
 - 主要 build 指令（兩個獨立專案，先庫後測試）：`cmake -S projects/medp -B projects/medp/build && cmake --build projects/medp/build` 然後 `cmake -S projects/tests -B projects/tests/build && cmake --build projects/tests/build`
 - 主要 test 指令：`./projects/tests/build/bin/medp_test.<平台>.<組態>.<位元數>`（如 `medp_test.linux.debug.64`），詳見 [workflows/testing.md](workflows/testing.md)
+- `projects/game/`（ASCII 策略遊戲可玩原型）是第三個可建置專案，同樣兩步 configure/build，不在主要流程內；跑法見 [wait-user/game.md](wait-user/game.md)
 
 ## 先讀哪裡
 
@@ -22,7 +23,7 @@
 
 - 所有回覆與留檔使用**繁體中文**。
 - 程式碼引用必須附**路徑:行號**。
-- 重構/整理必須 behavior-preserving；改完跑測試（19 項全綠為基準）。
+- 重構/整理必須 behavior-preserving；改完跑測試（21 項全綠為基準）。
 - **新增 component 時必須同步登記 `projects/medp/src/gcore/serialize/all_components.h` 的 `AllComponents`**，否則存檔會漏掉它。
 - 未經使用者確認，不 push、不開新大型工作。
 - 不 revert 使用者或其他 agent 的未確認變更；遇到衝突先停下說明。
@@ -32,6 +33,7 @@
 - 需要使用者親自驗證、外部環境、權限、實機操作時，記到 [WAIT_USER.md](WAIT_USER.md)。
 - 跨 session 的 open 狀態記到 [SESSION-LOG.md](SESSION-LOG.md) 或對應工作流的 `session-log.md`。
 - 架構圖/流程圖優先用 Mermaid、表格、列點；不要用需要字元對齊的 ASCII 框線圖。
+- **文件單檔上限 8 KB**；寫完用 `wc -c` 量，超過就按主題拆檔，母檔只留摘要＋連結（中文 UTF-8 一字 3 bytes，約 2700 字就到頂）。
 
 ## 分層思想
 

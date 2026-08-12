@@ -3,37 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>第 4 站 serialize/ — 存讀檔管線</title>
+<title>第 6 站 serialize/ — 存讀檔管線</title>
 <link rel="stylesheet" href="_shared.css">
 </head>
 <body>
 
 <nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
-<h1>第 4 站 serialize/ — 存讀檔管線</h1>
-<p class="meta">4 個檔案，共 130 行 ·
+<h1>第 6 站 serialize/ — 存讀檔管線</h1>
+<p class="meta">4 個檔案，共 153 行 ·
  對照 <a href="../CODE_TOUR.md">CODE_TOUR.md</a></p>
-<p>分工：<code>registry_io</code> 負責單一 registry ↔ 位元組（EnTT snapshot 遍歷、cereal PortableBinary 決定位元格式、entt_cereal_archive.h 純膠水橋接）；<code>zone_io</code> 負責完整 Zone——第一塊（id/parent/layers）直接 cereal，第二塊（reg）走 registry_io，兩塊依序接在同一 stream。</p><p>save 與 load 都以 fold expression 展開 <code>AllComponents</code> type_list——清單漏了誰，那個 component 就「默默」不存不讀，不會報錯。<b>存檔無版本欄位</b>（使用者裁定）：格式一變，舊檔讀出來就是壞資料；重寫期直接刪存檔目錄。</p>
+<p>分工：<code>registry_io</code> 負責單一 registry ↔ 位元組（EnTT snapshot 遍歷、cereal PortableBinary 決定位元格式、entt_cereal_archive.h 純膠水橋接）；<code>zone_io</code> 負責完整 Zone——第一塊（kind tag/id/parent/layers/子類 extra）直接 cereal，第二塊（reg）走 registry_io，兩塊依序接在同一 stream。</p><p>save 與 load 都以 fold expression 展開 <code>AllComponents</code> type_list（現存 8 型：Position/Velocity 來自 world，Name/Owner/Location/Unit/LocationKind/UnitKind 來自 common）——清單漏了誰，那個 component 就「默默」不存不讀，不會報錯。<b>存檔無版本欄位</b>（使用者裁定）：格式一變，舊檔讀出來就是壞資料；重寫期直接刪存檔目錄。</p>
 <h2>看什麼</h2>
 <ul class="points">
-<li>AllComponents：新增 component 唯一要登記的地方。 <a class="loc" href="#projects-medp-src-gcore-serialize-all-components-h-L8">all_components.h:8</a></li><li>純膠水：把 entt snapshot 的 callback 簽章轉成 cereal 呼叫，entt::entity ↔ 底層整數。 <a class="loc" href="#projects-medp-src-gcore-serialize-entt-cereal-archive-h-L8">entt_cereal_archive.h:8</a></li><li>save_impl / load_impl 用 fold expression 展開清單。 <a class="loc" href="#projects-medp-src-gcore-serialize-registry-io-h-L16">registry_io.h:16</a></li><li>陷阱點 orphans()：load 後沒有任何（已登記）component 的 entity 會被清掉。 <a class="loc" href="#projects-medp-src-gcore-serialize-registry-io-h-L30">registry_io.h:30</a></li><li>兩塊接合：大括號限制 archive 生存期——cereal 是解構時才把緩衝寫出去的。 <a class="loc" href="#projects-medp-src-gcore-serialize-zone-io-h-L20">zone_io.h:20</a></li>
+<li>AllComponents：新增 component 唯一要登記的地方，現存 8 型。 <a class="loc" href="#projects-medp-src-gcore-serialize-all-components-h-L12">all_components.h:12</a></li><li>純膠水：把 entt snapshot 的 callback 簽章轉成 cereal 呼叫，entt::entity ↔ 底層整數。 <a class="loc" href="#projects-medp-src-gcore-serialize-entt-cereal-archive-h-L8">entt_cereal_archive.h:8</a></li><li>save_impl / load_impl 用 fold expression 展開清單。 <a class="loc" href="#projects-medp-src-gcore-serialize-registry-io-h-L16">registry_io.h:16</a></li><li>陷阱點 orphans()：load 後沒有任何（已登記）component 的 entity 會被清掉。 <a class="loc" href="#projects-medp-src-gcore-serialize-registry-io-h-L30">registry_io.h:30</a></li><li>kind tag 先讀出才知道要建構哪個子類。 <a class="loc" href="#projects-medp-src-gcore-serialize-zone-io-h-L35">zone_io.h:35</a></li><li>兩塊接合：大括號限制 archive 生存期——cereal 是解構時才把緩衝寫出去的。 <a class="loc" href="#projects-medp-src-gcore-serialize-zone-io-h-L25">zone_io.h:25</a></li>
 </ul>
 <div class="quiz"><b>讀完該能回答：</b>為什麼新 component 忘了登記 AllComponents，存檔會「默默」漏掉它、不會報錯？</div>
 
 <section class="file" id="projects-medp-src-gcore-serialize-all-components-h">
-  <h3><code>projects/medp/src/gcore/serialize/all_components.h</code> <span class="dim">（11 行）</span>
+  <h3><code>projects/medp/src/gcore/serialize/all_components.h</code> <span class="dim">（21 行）</span>
       <a class="loc" href="../../../../projects/medp/src/gcore/serialize/all_components.h">開啟原始檔</a></h3>
   <div class="code">
 <div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L1"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
 <div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L2"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;entt.hpp&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L3"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../components/position.h&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L4"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L4">4</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../components/velocity.h&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L5"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L5">5</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L6"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L6">6</a><span class="src"><span class="cm">// snapshot save/load 順序的單一來源。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L7"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L7">7</a><span class="src"><span class="cm">// 新增 component 型別請加在這裡；save 與 load 兩邊都會展開這份清單。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L8"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L8">8</a><span class="src"><span class="kw">using</span> AllComponents = entt::type_list&lt;</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L9"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L9">9</a><span class="src">    Position,</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L10"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L10">10</a><span class="src">    Velocity</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L11"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L11">11</a><span class="src">&gt;;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L3"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../world/components/position.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L4"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L4">4</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../world/components/velocity.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L5"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L5">5</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../common/components/name.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L6"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L6">6</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../common/components/owner.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L7"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L7">7</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../common/components/location.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L8"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L8">8</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../common/components/unit.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L9"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L9">9</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L10"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L10">10</a><span class="src"><span class="cm">// snapshot save/load 順序的單一來源。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L11"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L11">11</a><span class="src"><span class="cm">// 新增 component 型別請加在這裡；save 與 load 兩邊都會展開這份清單。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L12"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L12">12</a><span class="src"><span class="kw">using</span> AllComponents = entt::type_list&lt;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L13"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L13">13</a><span class="src">    Position,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L14"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L14">14</a><span class="src">    Velocity,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L15"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L15">15</a><span class="src">    Name,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L16"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L16">16</a><span class="src">    Owner,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L17"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L17">17</a><span class="src">    Location,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L18"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L18">18</a><span class="src">    Unit,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L19"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L19">19</a><span class="src">    LocationKind,</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L20"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L20">20</a><span class="src">    UnitKind</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-all-components-h-L21"><a class="no" href="#projects-medp-src-gcore-serialize-all-components-h-L21">21</a><span class="src">&gt;;</span></div>
   </div>
 </section>
 <section class="file" id="projects-medp-src-gcore-serialize-entt-cereal-archive-h">
@@ -132,51 +142,65 @@
   </div>
 </section>
 <section class="file" id="projects-medp-src-gcore-serialize-zone-io-h">
-  <h3><code>projects/medp/src/gcore/serialize/zone_io.h</code> <span class="dim">（36 行）</span>
+  <h3><code>projects/medp/src/gcore/serialize/zone_io.h</code> <span class="dim">（49 行）</span>
       <a class="loc" href="../../../../projects/medp/src/gcore/serialize/zone_io.h">開啟原始檔</a></h3>
   <div class="code">
 <div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L1"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
 <div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L2"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;istream&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L3"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L3">3</a><span class="src"><span class="pp">#include</span> &lt;ostream&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L4"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L4">4</a><span class="src"><span class="pp">#include</span> &lt;cereal/archives/portable_binary.hpp&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L5"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L5">5</a><span class="src"><span class="pp">#include</span> &lt;cereal/types/map.hpp&gt;</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L6"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L6">6</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone/zone.h&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L7"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L7">7</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;registry_io.h&quot;</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L8"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L8">8</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L9"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L9">9</a><span class="src"><span class="cm">// 一個完整 Zone 的 save/load。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L10"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L10">10</a><span class="src"><span class="cm">//</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L11"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L11">11</a><span class="src"><span class="cm">// Zone 有兩塊資料，走兩條不同的路：</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L12"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L12">12</a><span class="src"><span class="cm">//   1. id / parent / layers —— 純資料，直接交給 cereal</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L13"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L13">13</a><span class="src"><span class="cm">//   2. reg                  —— entity 與 component，得走 EnTT snapshot（registry_io）</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L14"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L14">14</a><span class="src"><span class="cm">//</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L15"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L15">15</a><span class="src"><span class="cm">// 檔案格式就是這兩塊依序接在一起。注意 cereal archive 是在解構時才把緩衝</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L16"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L16">16</a><span class="src"><span class="cm">// 寫出去的，所以第一塊必須用大括號限制生存期，確保它先完整落地，</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L17"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L17">17</a><span class="src"><span class="cm">// registry_io 才接著往同一個 stream 寫。</span></span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L18"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L18">18</a><span class="src"><span class="kw">namespace</span> zone_io {</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L19"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L19">19</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L20"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L20">20</a><span class="src"><span class="kw">inline</span> <span class="kw">void</span> save(Zone&amp; z, std::ostream&amp; os) {</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L21"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L21">21</a><span class="src">    {</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L22"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L22">22</a><span class="src">        cereal::PortableBinaryOutputArchive ar{os};</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L23"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L23">23</a><span class="src">        ar(z.id, z.parent, z.layers);</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L24"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L24">24</a><span class="src">    }</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L25"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L25">25</a><span class="src">    registry_io::save(z.reg, os);</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L26"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L26">26</a><span class="src">}</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L27"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L27">27</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L28"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L28">28</a><span class="src"><span class="kw">inline</span> <span class="kw">void</span> load(Zone&amp; z, std::istream&amp; is) {</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L29"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L29">29</a><span class="src">    {</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L30"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L30">30</a><span class="src">        cereal::PortableBinaryInputArchive ar{is};</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L31"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L31">31</a><span class="src">        ar(z.id, z.parent, z.layers);</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L32"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L32">32</a><span class="src">    }</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L33"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L33">33</a><span class="src">    registry_io::load(z.reg, is);</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L34"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L34">34</a><span class="src">}</span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L35"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L35">35</a><span class="src"> </span></div>
-<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L36"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L36">36</a><span class="src">} <span class="cm">// namespace zone_io</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L3"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L3">3</a><span class="src"><span class="pp">#include</span> &lt;memory&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L4"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L4">4</a><span class="src"><span class="pp">#include</span> &lt;ostream&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L5"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L5">5</a><span class="src"><span class="pp">#include</span> &lt;cereal/archives/portable_binary.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L6"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L6">6</a><span class="src"><span class="pp">#include</span> &lt;cereal/types/map.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L7"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L7">7</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone/zone.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L8"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L8">8</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;registry_io.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L9"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L9">9</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L10"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L10">10</a><span class="src"><span class="cm">// 一個完整 Zone 的 save/load。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L11"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L11">11</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L12"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L12">12</a><span class="src"><span class="cm">// Zone 有兩塊資料，走兩條不同的路：</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L13"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L13">13</a><span class="src"><span class="cm">//   1. kind / id / parent / layers / 子類 extra —— 純資料，直接交給 cereal</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L14"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L14">14</a><span class="src"><span class="cm">//   2. reg —— entity 與 component，得走 EnTT snapshot（registry_io）</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L15"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L15">15</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L16"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L16">16</a><span class="src"><span class="cm">// 檔案格式就是這兩塊依序接在一起。第一塊開頭是 uint8 的 ZoneKind tag：</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L17"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L17">17</a><span class="src"><span class="cm">// load 必須先讀它才知道要 new 哪個子類，因此 load 是「建構＋讀入」一體、</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L18"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L18">18</a><span class="src"><span class="cm">// 回傳 unique_ptr&lt;Zone&gt;；未知 tag 由 make_zone throw（fail-fast）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L19"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L19">19</a><span class="src"><span class="cm">// 子類專屬資料經 save_extra/load_extra 掛鉤寫在第一塊尾端。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L20"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L20">20</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L21"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L21">21</a><span class="src"><span class="cm">// 注意 cereal archive 是在解構時才把緩衝寫出去的，所以第一塊必須用大括號</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L22"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L22">22</a><span class="src"><span class="cm">// 限制生存期，確保它先完整落地，registry_io 才接著往同一個 stream 寫。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L23"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L23">23</a><span class="src"><span class="kw">namespace</span> zone_io {</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L24"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L24">24</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L25"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L25">25</a><span class="src"><span class="kw">inline</span> <span class="kw">void</span> save(Zone&amp; z, std::ostream&amp; os) {</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L26"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L26">26</a><span class="src">    {</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L27"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L27">27</a><span class="src">        cereal::PortableBinaryOutputArchive ar{os};</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L28"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L28">28</a><span class="src">        <span class="kw">auto</span> kind = <span class="kw">static_cast</span>&lt;<span class="kw">uint8_t</span>&gt;(z.kind());</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L29"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L29">29</a><span class="src">        ar(kind, z.id, z.parent, z.layers);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L30"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L30">30</a><span class="src">        z.save_extra(ar);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L31"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L31">31</a><span class="src">    }</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L32"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L32">32</a><span class="src">    registry_io::save(z.reg, os);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L33"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L33">33</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L34"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L34">34</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L35"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L35">35</a><span class="src"><span class="kw">inline</span> std::unique_ptr&lt;Zone&gt; load(std::istream&amp; is) {</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L36"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L36">36</a><span class="src">    std::unique_ptr&lt;Zone&gt; z;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L37"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L37">37</a><span class="src">    {</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L38"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L38">38</a><span class="src">        cereal::PortableBinaryInputArchive ar{is};</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L39"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L39">39</a><span class="src">        <span class="kw">uint8_t</span> kind{};</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L40"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L40">40</a><span class="src">        ar(kind);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L41"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L41">41</a><span class="src">        z = make_zone(<span class="kw">static_cast</span>&lt;ZoneKind&gt;(kind));</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L42"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L42">42</a><span class="src">        ar(z-&gt;id, z-&gt;parent, z-&gt;layers);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L43"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L43">43</a><span class="src">        z-&gt;load_extra(ar);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L44"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L44">44</a><span class="src">    }</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L45"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L45">45</a><span class="src">    registry_io::load(z-&gt;reg, is);</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L46"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L46">46</a><span class="src">    <span class="kw">return</span> z;</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L47"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L47">47</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L48"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L48">48</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-serialize-zone-io-h-L49"><a class="no" href="#projects-medp-src-gcore-serialize-zone-io-h-L49">49</a><span class="src">} <span class="cm">// namespace zone_io</span></span></div>
   </div>
 </section>
-<nav class="pager"><a href="03-components.html">← 第 3 站 components/ — 資料積木</a><a href="05-zone-manager.html">第 5 站 ZoneManager — 總管 →</a></nav>
+<nav class="pager"><a href="05-world-gen.html">← 第 5 站 world/world.{h,cpp} + world_gen.{h,cpp} — World 子類與 worldgen</a><a href="07-zone-manager.html">第 7 站 zone/zone_manager.h + .cpp — 總管 →</a></nav>
 
 <footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
- <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_MAP.md">CODE_MAP.md</a>；
-程式碼更新後重跑 <code>python3 build.py</code> 即同步。</footer>
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>／
+<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python build.py</code> 即同步。</footer>
 </body>
 </html>

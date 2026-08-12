@@ -67,7 +67,7 @@ Task 1 → Task 2（同一 commit 或緊接——「v1 定版含 z」的宣稱�
    - [CODE_MAP.md](../common/code-map/CODE_MAP.md)：10（systems/ 目錄描述）、28（movement 條目）、59（架構不變量 3）——改述為「system 是吃 Zone& 的自由函式；位置變更收口於 move_by」。
    - [CODE_TOUR.md:62](../common/code-map/CODE_TOUR.md)（system 形狀範本）；:46 的 zone_io 行號漂移順手校正。
    - html 生成層（06-systems.html 等）不重生，記待辦（`python3 build.py`）。
-6. 完成後在報告 [tome4_recommendations.md:67](../../docs/work/design/tome4_recommendations.md) 的收口警訊處回註「已收口（move_by）」。
+6. 完成後在報告 [tome4_recommendations_p0_core.md:29](../../docs/work/design/tome4_recommendations_p0_core.md:29) 的收口警訊處回註「已收口（move_by）」。（原為 `tome4_recommendations.md:67`；該報告 2026-08-12 因 8 KB 上限拆檔，此處只校正指標、未改述文。）
 
 驗證：**建置對本檔零覆蓋**（medp 唯一 TU 是 zone_manager.cpp，其 include 鏈不含 movement.h——稽核發現的盲區）。故在 scratchpad 建臨時 TU：
 

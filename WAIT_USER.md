@@ -11,25 +11,64 @@
 - 高風險操作的確認
 - **待過目**：agent 完成的非微小變更，排隊等使用者親讀（路徑:行號 + 一句看點）
 
-## Open
+本檔是**索引**：每項一行摘要，詳情（改了什麼、怎麼驗證的、看點）在 `wait-user/` 底下的主題檔。
+新增項目時同步寫兩邊；結案時兩邊一起刪。
+（拆檔原因：本檔曾長到 12 KB，超過專案的文件 8 KB 上限。）
 
-- **待親自驗證** 策略遊戲可玩原型 (`projects/game/`) — 建置成功。Windows：`cmake -S projects/game -B projects/game/build -G "MinGW Makefiles" && cmake --build projects/game/build`，執行檔 `...bin/medp_game.windows.debug.64.exe`；Linux：`cmake -S projects/game -B projects/game/build && cmake --build projects/game/build`，執行檔 `...bin/medp_game.linux.debug.64`（**終端需開到至少 100×28**，Linux 沒有 Windows 那段自動放大主控台的程式碼）。**功能**：80×40 ASCII 世界地圖（FBM 生成），玩家 2 城 3 部隊 vs AI 2 城 3 部隊，回合制，佔領所有敵城為勝；控制：Enter 選取，方向鍵/hjkl 移動，S 略過，T 結束回合，Q 離開。**需親自執行驗證**：(1) 世界地圖能正確顯示地形色彩；(2) 部隊可選取/移動/戰鬥；(3) AI 回合後能繼續玩家回合；(4) 勝利/失敗畫面出現。
+---
 
-- **待過目** `projects/game/` Linux 可跑性修復（你在 Windows 寫的原型，在 Manjaro 上編譯全綠但**不可玩**：[display.h](projects/game/src/display.h) 的 `wait_key()` 非 Windows 分支直接回 `Key::UNKNOWN`，而 [game.cpp:764](projects/game/src/game.cpp:764) 是 `while (!game_over) { render(); handle_input(); }` → 不吃輸入的忙轉迴圈，實測 3 秒噴 505 MB 終端輸出）——(1) [display.h:31-77](projects/game/src/display.h:31) 新增 `disp::detail` POSIX raw mode 層（`enter_raw`/`leave_raw`/`apply_raw`/`read_byte`，function-local static 存原始 termios 以保 header-only）；(2) [display.h:169-201](projects/game/src/display.h:169) `wait_key()` 的 `#else` 分支實作：`read()` 逐 byte，`0x1b` 開頭再以 ~0.1 秒 `VTIME` 逾時區分「單獨按 ESC」與方向鍵 CSI 序列（`\033[A~D` 與應用模式 `\033OA~D`），Windows 分支一行未動；(3) [main.cpp](projects/game/src/main.cpp) 刪掉 `wait_any_key()`（Linux 走 `getchar()` 其實要按 Enter），統一改 `disp::wait_key()` 並調整為**先等鍵再 shutdown**，讓 raw mode 下才是真的「按任意鍵」。**驗證**：medp 建置綠、測試 21/21 綠、game 建置綠；pty 實測輸入 `↓↓→→⏎→↓tq` → 游標 (4,35)→(4,36)→(5,36)→(6,36)→(7,36)→(7,37) 逐格對應、Enter 正確回饋、`t` 使回合 1→2（AI 回合跑過）、`q` 乾淨退出 exit=0；忙轉消失（505 MB → 單屏 29 KB）；`stty` 前後 `icanon`/`echo` 一致確認終端狀態無洩漏。看點：(1) 刻意**只**關 `ICANON`/`ECHO`——保留 `OPOST` 讓 `printf` 的 `\n` 仍補 CR（不然排版階梯化）、保留 `ISIG` 讓 Ctrl-C 留逃生門，這條取捨是否合你意；(2) `read()` 回 EOF 時我映射成 `Key::ESCAPE`（而非 `UNKNOWN`）以免非互動 stdin 又變忙轉；(3) 另補了 `std::atexit(leave_raw)`，例外逸出/abort 也會還原終端。
+## Open — 需要你親自動手
 
-- **待過目** 策略遊戲 actor 基礎設施第一刀（ECS 組合版；種類為 root 底下的資料驅動 def，非 enum）——新增 `gcore/common/components/{name,owner,location,unit}.h`＋`gcore/common/actor.h`，登記進 `serialize/all_components.h`（**存檔格式已變，舊存檔請刪**），新測試 `actor_defs_and_spawn`／`actor_roundtrip`。**建置綠、測試 21/21 綠**（含 enum→def 改版；exe 一度被 Windows 應用程式控制擋、重試後可跑）。模型：actor＝共用身分元件（Name＋Owner），Location/Unit 為兩大家族 tag；種類是掛在 **root** 的 def 實體（`LocationKind{id}`/`UnitKind{id}`＋Name），actor 以穩定 id 參照——`define_*` 吃 `Zone&` 並 fail-fast 檢查 `id==ZONE_ROOT`。看點：(1) 是否認同「def 一律住 root、actor 以穩定 id 參照」這條線；(2) def 現手動配 id，將來 Ruleset 載入＋登錄機制發號（比照 ZoneManager）；(3) 放置（Position）刻意沒進 spawn；`Owner.faction`／`Location.kind` 都走穩定 uint64 id 不用 entt handle（跨 registry 安全）。
-- **待過目** 你把 World 專屬物搬進新目錄 `gcore/world/`（world.{h,cpp} + components/ + systems/ 從 `zone/`、`components/`、`systems/` 集中而來，`zone/` 只留通用框架），我補完搬家後斷掉的 6 處 include 接線：`serialize/all_components.h:3-4`（→`../world/components/`）、`world/world.h:2`（→`../zone/zone.h`）、`world/systems/movement.h:5`（→`../../zone/zone.h`）、`zone/zone.cpp:2`（→`../world/world.h`）、`tests/src/main.cpp:2,5-7`（→`gcore/world/...`）。驗證：medp/medp_static 建置綠＋測試 **19/19 綠**。CODE_MAP 目錄樹與 Runtime 表、CODE_TOUR 第 3/6 站路徑已同步。看點：分層切分（zone=通用框架 / world=World 子類專屬）是否合你意。另：`docs/references/how_to_add_component_and_system.md` 等歷史教學仍寫舊 `gcore/components|systems` 路徑，按 AGENTS 慣例先保留未搬。
-- **待過目** worldgen 抽成獨立模組並改純簽章（經你確認「整組搬＋薄殼」＋不依賴 World 型別）——`gcore/world/world_gen.h`：`WorldGenParams`＋`TERRAIN_*` 常數＋`world_gen::generate(const WorldGenParams&, tdarray<Tile>&, uint64_t zone_id=0)`（include `util/tdarray.hpp`＋`zone/tile.h`，不再認識 World）；`gcore/world/world_gen.cpp`：`Field`（libtcod FBM）＋實作吃 `(gen, grid, zone_id)`，**不再 include world.h**，內部 `grid.alloc` 整層重寫；`gcore/world/world.cpp:6` `World::generate()` 薄殼挑 `layers[0]`：`world_gen::generate(gen, layers[0], id)`。驗證：建置綠＋測試 **19/19 綠**。註：worldgen 現為單層（`layers[0]`）作業，挑哪層由 World 薄殼決定，world_gen 本身層數無關。
-- **待過目** World 子類落地（[spec＋落地備註](workflows/specs/world-zone-subclass-design.md)，三題經你拍板後直接動工；**測試 19/19 綠**，基準 15→19）——(1) `projects/medp/src/gcore/zone/zone.h:17,46-71`：`ZoneKind`＋virtual dtor＋extra 掛鉤＋`make_zone` 工廠＋`zone_cast<T>`（Zone 從此不可移動，只經 unique_ptr 持有）；(2) `projects/medp/src/gcore/zone/world.h`/`.cpp`：`World : Zone`＋`WorldGenParams`＋`generate()`（libtcod FBM 高度→水陸→biome，同 seed 同圖）；(3) `projects/medp/src/gcore/serialize/zone_io.h:25-49`：檔頭 kind tag、load 改回傳 `unique_ptr<Zone>`（**存檔格式已變，舊存檔目錄請手動刪除**）；(4) `projects/medp/CMakeLists.txt:50-69`：libtcod 2.2.2 headless FetchContent（首次 configure 需網路）。看點：generate 的 biome 佔位分類（world.cpp:44-53）是否符合你要的第一版粒度。另：CODE_MAP Runtime 表原停在重構前（還列著 zone_key/global_manager/zone_store），已按現行程式碼修正。
-- **待過目** docs/work 四份文檔同步新核心 — [progress_overview](docs/work/progress_overview.md)（全面重寫的進度快照）、[gcore_overview](docs/work/architecture/gcore_overview.md)（新核心逐檔導覽）、[zone_layers](docs/work/design/zone_layers.md)（**定位變更**：降級為設計願景＋實作現況，三層尺度仍有效）、[lifecycle](docs/work/design/lifecycle.md)（名詞對齊 ZoneManager）。看點：zone_layers 的「實作現況」節是否符合你對三層願景的想法；另 `docs/references/zone_streaming_architecture.md` 教學仍是舊架構（index 卡片已標過期），要不要重寫等你裁定。
-- **待過目＋親自驗證** html 導覽層已隨新核心重生（[index](workflows/common/code-map/html/index.html)，8 站：01-util…08-gbind）——請瀏覽器開啟看新站台切分與嵌入原始碼是否合意。
-- **待過目** `projects/tests/src/main.cpp` — 測試套件整套重寫對應新核心，**15/15 綠**，取代舊 16 項基準。看點：case 總表在檔尾 `main()`；`test_open_protocol_guards`／`test_load_id_mismatch_throws` 是新增的損毀防護驗證；`test_tick_all_zones` 明文固定「root 也參加 tick」的新語意（舊架構 root 不參加）。
+這幾項 agent 做不了，卡在你身上：
 
-- **待過目** zone 定址＋生命週期落地（[spec 拍板結果表](workflows/specs/zone-addressing-lifecycle-design.md)，已逐條經你裁定）——`projects/medp/src/gcore/zone/zone_manager.h:38-42`：`create_child` 單點配號（`create` 收 private）；`zone_manager.cpp:9-31`：開檔協定（manifest 還原 next_id、root.bin 必讀回、無 manifest 有 .bin → throw）；`zone_manager.cpp:79-89`：manifest 原子寫；`zone_manager.cpp:60-64`＋`:106-109`：destroy 刪檔＋load 驗 id。驗證：建置綠＋新測試套件 15/15。
-- **待過目** P0 落地（[計畫＋執行結果](workflows/plans/save-format-position-z.md)；Task 1 存檔版本欄位經你裁定放棄）——(1) `projects/medp/src/gcore/components/position.h:7-14`：Position 補 `int z`（x/y/z 全 int，照你的裁定）；(2) `projects/medp/src/gcore/zone/zone.h:36`：`Zone::layers` 鍵 `int16_t`→`int`；(3) `projects/medp/src/gcore/systems/movement.h:12,20`：新增 `move_by` 收口、movement 改吃 `Zone&`（簽章即 ZoneSystem，可直接註冊）。驗證：medp/medp_static 建置綠＋movement.h 臨時 TU 語法編譯過（後續新測試套件 15/15 亦覆蓋）。
-- **待過目** [docs/work/design/tome4_recommendations.md](docs/work/design/tome4_recommendations.md) — ToME4 架構研讀→重寫建議報告（研讀 `C:\code\mine\modding_tome4` 語料，經三路對抗性覆核修訂）。看點：§2 的 P0 三項（Position 補 z、存檔版本欄位、生命週期策略）與 §4 落地順序是否合你意；step 0 指出**測試套件已隨重構斷裂、16 項基準失效**，這是下一步動工前的硬前置。
-- **待過目** 資料夾整理（對齊 `~/repo/workflows` 標準 + 你的 docs/src 分流）：內容文件 `work/`→`docs/work/`、`references/`→`docs/references/`；C++ 專案改為 `projects/` 下平級三專案 `projects/medp/`（原 `src`+`include`+`data`+`CMakeLists`）、`projects/tests/`（原 `test/`）、`projects/archived/`（原 `notes/` 重寫前原型）。全程 `git mv` 保留歷史；同步更新 AGENTS/INDEX/CODE_MAP/CODE_TOUR/references/dev-env/testing/.gitignore 的路徑與建置指令，並重生 html 導覽層。除 CMake 接線（見上）外零邏輯變更；未 commit。看點：`projects/` 三專案切分與 `docs/` 佈局是否合你意。
-- **待過目** 頂層文件整理（對齊 `~/repo/workflows` 乾淨 kernel）：刪除 4 個模板治理檔（`ADOPTION`/`INIT-QUESTIONS`/`MAINTENANCE`/`SYNC`，屬模板 repo 非本專案）、移除壞掉的 `commands/`（README 列的檔全不存在）、`others/`→`references/`（含 5 檔內部交叉引用）、新增 [INDEX.md](INDEX.md) repo 地圖並在 `AGENTS.md:14` 加入口。頂層 md 12→9。純文件、零原始碼變更，git 可全復原；未 commit。看點：INDEX.md 佈局是否符合你對頂層目錄的描述。
-- **待過目** `projects/medp/src/gcore/util/tdarray.hpp:10-27` — 補上全檔僅缺的註解：檔頭三條使用慣例（true=失敗、is_coor 座標、get/getptr/getval 差異），加上各函式家族短註；純註解、零邏輯變更，16 項測試全綠。
-- **待過目＋親自驗證** `docs/index.html` — 新增 `docs/` 文件彙整頁：依「進度總覽 / 設計架構(work) / 外部教學(references)」三區列出全部 9 份 md，各附標題、一句摘要、路徑與連結；單一自帶樣式 HTML，可直接用瀏覽器開。看點：分區與摘要是否符合你對 docs 的心智；連結指向 .md 原檔（瀏覽器多半顯示原始文字），若想要渲染後閱讀體驗再告知。
+| 事項 | 詳情 |
+|------|------|
+| **跑一局策略遊戲原型** — 建置已綠，但沒人實際玩過完整一局；要確認地形顯示／選取移動戰鬥／AI 回合／勝敗畫面四件事 | [wait-user/game.md](wait-user/game.md) |
+| **用瀏覽器開 html 導覽層** — 2026-08-12 剛修好（原本站台路徑指向已刪除的目錄，等於是壞的）並重排為 9 站，看新切分與嵌入原始碼是否合意 | [wait-user/structure.md](wait-user/structure.md) |
+| **用瀏覽器開 `docs/index.html`** — 看文件彙整頁的分區與摘要是否符合你的心智 | [wait-user/docs.md](wait-user/docs.md) |
 
+## Open — 待過目（agent 已完成，等你親讀）
+
+### gcore 核心 — [wait-user/gcore.md](wait-user/gcore.md)
+
+| 事項 | 一句看點 |
+|------|----------|
+| actor 基礎設施（ECS 組合版） | 是否認同「種類 def 一律住 root、actor 以穩定 id 參照」這條線？ |
+| World 專屬物集中進 `gcore/world/` | 分層切分（zone＝通用框架／world＝World 子類專屬）是否合你意？ |
+| worldgen 抽成獨立模組＋純簽章 | `world_gen` 不再認識 World 型別，`World::generate()` 只是挑 `layers[0]` 的薄殼 |
+| World 子類落地 | `generate` 的 biome 佔位分類是否符合你要的第一版粒度？ |
+| 測試套件整套重寫 | `test_tick_all_zones` 明文固定「root 也參加 tick」的新語意（舊架構 root 不參加）|
+| zone 定址＋生命週期落地 | 開檔協定：無 manifest 但有 .bin 直接 throw，不靜默覆寫舊存檔 |
+| P0 落地：Position 補 z、move_by 收口 | 位置變更從此必經 `move_by` 單一入口 |
+| tdarray 補註解 | 純註解、零邏輯變更（true＝失敗這條慣例值得確認）|
+
+### 遊戲原型 — [wait-user/game.md](wait-user/game.md)
+
+| 事項 | 一句看點 |
+|------|----------|
+| Linux 可跑性修復（POSIX raw mode 輸入層）| 刻意只關 `ICANON`／`ECHO`，保留 `OPOST`（排版）與 `ISIG`（Ctrl-C 逃生門）——這條取捨是否合你意？ |
+
+### 目錄結構與導覽層 — [wait-user/structure.md](wait-user/structure.md)
+
+| 事項 | 一句看點 |
+|------|----------|
+| **html 導覽層修復＋CODE_TOUR 重整**（2026-08-12）| 站台路徑原本指向已刪除的目錄，導覽層是壞的不只是過期；重排為 9 站並拆出 `CODE_TOUR_world_actor.md` |
+| 資料夾整理（docs/ ＋ projects/ 分流）| `projects/` 的專案切分與 `docs/` 佈局是否合你意？ |
+| 頂層文件整理（對齊乾淨 kernel）| INDEX.md 佈局是否符合你對頂層目錄的描述？ |
+
+### docs/work 設計文檔與彙整頁 — [wait-user/docs.md](wait-user/docs.md)
+
+| 事項 | 一句看點 |
+|------|----------|
+| **gcore_overview 重寫＋拆檔**（2026-08-12）| 原本整份還在描述重構前的扁平目錄；與 `world_actor_game.md` 的「地圖 vs 沿革」分工是否清楚？ |
+| **8 KB 上限溯及拆檔**（2026-08-12）| 6 份既有超標文件按主題拆開；母檔保留原檔名當索引，所以既有連結沒斷。六組都驗過零內容遺失 |
+| docs/work 四份文檔同步新核心 | zone_layers 的「實作現況」節是否符合你對三層願景的想法？ |
+| ToME4 研讀→重寫建議報告 | §2 的 P0 三項與 §4 落地順序是否合你意？ |
+| docs/index.html 文件彙整頁 | 分區與摘要是否符合你對 docs 的心智？ |
+
+### references 庫教學 — [wait-user/references.md](wait-user/references.md)
+
+| 事項 | 一句看點 |
+|------|----------|
+| **references 教學對齊新核心**（2026-08-12）| `how_to_add_component_and_system.md` 原本整份在教已刪除的 `GlobalManager`／`ZoneKey`／`zone_meta.h`——等於教人用不存在的 API |
+| **zone_streaming_architecture 整份重寫**（2026-08-12）| 定位收斂為「為什麼是這個架構」的概念教學，與 gcore_overview／CODE_TOUR／how_to 三份劃清邊界——這個切分決定以後架構知識往哪寫 |

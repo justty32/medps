@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 站 world/components/ + world/systems/ — World 專屬積木與 system 範本</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+
+<nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
+<h1>第 4 站 world/components/ + world/systems/ — World 專屬積木與 system 範本</h1>
+<p class="meta">3 個檔案，共 51 行 ·
+ 對照 <a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a></p>
+<p>World 子類專屬的 POD component（跟 common/ 的身分層分開放，因為不是所有 Zone 子類都要）。全部是 POD aggregate + <code>serialize()</code> 成員。<b>鐵律：新增 component 必須同步登記 serialize/all_components.h 的 AllComponents</b>，否則存檔會默默漏掉它（見第 6 站）。</p><p>26 行 <code>movement.h</code> 示範「system 該長什麼樣」：簽章 <code>void(Zone&amp;)</code> 即 ZoneSystem，可直接 <code>zm.add_zone_system(systems::movement)</code> 註冊。位置變更一律經 <code>move_by</code> 收口、不直改 Position——將來 tile flag 檢查（可走性）、空間索引維護都掛在這個口上。</p>
+<h2>看什麼</h2>
+<ul class="points">
+<li>Position{x,y,z}：z 即 Zone::layers 的鍵；有 .x/.y 故滿足 tdarray 的 is_coor concept。 <a class="loc" href="#projects-medp-src-gcore-world-components-position-h-L7">position.h:7</a></li><li>Velocity{dx,dy}：每 tick 移動步（示範用）。 <a class="loc" href="#projects-medp-src-gcore-world-components-velocity-h-L5">velocity.h:5</a></li><li>move_by：位置變更的唯一入口。 <a class="loc" href="#projects-medp-src-gcore-world-systems-movement-h-L12">movement.h:12</a></li><li>movement：view 遍歷帶 entity，交給 move_by。 <a class="loc" href="#projects-medp-src-gcore-world-systems-movement-h-L20">movement.h:20</a></li>
+</ul>
+<div class="quiz"><b>讀完該能回答：</b>新增一個 component 除了寫 struct 本身，還必須改哪個檔？要新增一個 system，需要改 ZoneManager 嗎？</div>
+
+<section class="file" id="projects-medp-src-gcore-world-components-position-h">
+  <h3><code>projects/medp/src/gcore/world/components/position.h</code> <span class="dim">（14 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/components/position.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L1"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L2"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L2">2</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L3"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L3">3</a><span class="src"><span class="cm">// actor 在其 zone 內的 grid 位置（zone 的地圖是 Zone::layers 那疊 tdarray）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L4"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L4">4</a><span class="src"><span class="cm">// 整數 tile 座標；「在哪個 zone」由 entity 所屬的 registry 決定，不記在這裡。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L5"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L5">5</a><span class="src"><span class="cm">// z 是所在 layer，即 Zone::layers 的鍵：地面=0，往下為負。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L6"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L6">6</a><span class="src"><span class="cm">// （具有 .x/.y，因此也滿足 tdarray 的 is_coor concept。）</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L7"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L7">7</a><span class="src"><span class="kw">struct</span> Position {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L8"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L8">8</a><span class="src">    <span class="kw">int</span> x{};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L9"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L9">9</a><span class="src">    <span class="kw">int</span> y{};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L10"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L10">10</a><span class="src">    <span class="kw">int</span> z{};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L11"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L11">11</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L12"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L12">12</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L13"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L13">13</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(x, y, z); }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-position-h-L14"><a class="no" href="#projects-medp-src-gcore-world-components-position-h-L14">14</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-world-components-velocity-h">
+  <h3><code>projects/medp/src/gcore/world/components/velocity.h</code> <span class="dim">（11 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/components/velocity.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L1"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L2"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L2">2</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L3"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L3">3</a><span class="src"><span class="cm">// 在 zone grid 上每個 tick 的移動步進（整數 tile）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L4"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L4">4</a><span class="src"><span class="cm">// movement system 的示範 component；之後再針對真正的回合模型細修。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L5"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L5">5</a><span class="src"><span class="kw">struct</span> Velocity {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L6"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L6">6</a><span class="src">    <span class="kw">int</span> dx{};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L7"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L7">7</a><span class="src">    <span class="kw">int</span> dy{};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L8"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L8">8</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L9"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L9">9</a><span class="src">    <span class="kw">template</span>&lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L10"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L10">10</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(dx, dy); }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-components-velocity-h-L11"><a class="no" href="#projects-medp-src-gcore-world-components-velocity-h-L11">11</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-world-systems-movement-h">
+  <h3><code>projects/medp/src/gcore/world/systems/movement.h</code> <span class="dim">（26 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/systems/movement.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L1"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L2"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;entt.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L3"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../components/position.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L4"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L4">4</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../components/velocity.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L5"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L5">5</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../../zone/zone.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L6"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L6">6</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L7"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L7">7</a><span class="src"><span class="kw">namespace</span> systems {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L8"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L8">8</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L9"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L9">9</a><span class="src"><span class="cm">// 位置變更的唯一入口：直改 Position 僅限 zone 內移動且必經 move_by。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L10"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L10">10</a><span class="src"><span class="cm">// 將來 tile flag 檢查（可走性）、空間索引維護都掛在這裡。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L11"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L11">11</a><span class="src"><span class="cm">// 現階段僅座標加法；z 不動（Velocity 無 dz，跨層移動屬將來的傳送/樓梯機制）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L12"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L12">12</a><span class="src"><span class="kw">inline</span> <span class="kw">void</span> move_by(Zone&amp; z, entt::entity e, <span class="kw">int</span> dx, <span class="kw">int</span> dy) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L13"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L13">13</a><span class="src">    <span class="kw">auto</span>&amp; p = z.reg.get&lt;Position&gt;(e);</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L14"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L14">14</a><span class="src">    p.x += dx;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L15"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L15">15</a><span class="src">    p.y += dy;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L16"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L16">16</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L17"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L17">17</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L18"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L18">18</a><span class="src"><span class="cm">// 每個 zone 的 system：讓每個帶有 Velocity 的 actor 前進一步。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L19"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L19">19</a><span class="src"><span class="cm">// 簽章即 ZoneSystem，可直接 zm.add_zone_system(systems::movement);</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L20"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L20">20</a><span class="src"><span class="kw">inline</span> <span class="kw">void</span> movement(Zone&amp; z) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L21"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L21">21</a><span class="src">    z.reg.view&lt;Position, Velocity&gt;().each([&amp;](entt::entity e, Position&amp;, Velocity&amp; v) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L22"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L22">22</a><span class="src">        move_by(z, e, v.dx, v.dy);</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L23"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L23">23</a><span class="src">    });</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L24"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L24">24</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L25"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L25">25</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-systems-movement-h-L26"><a class="no" href="#projects-medp-src-gcore-world-systems-movement-h-L26">26</a><span class="src">} <span class="cm">// namespace systems</span></span></div>
+  </div>
+</section>
+<nav class="pager"><a href="03-common-actor.html">← 第 3 站 common/ — actor 身分層</a><a href="05-world-gen.html">第 5 站 world/world.{h,cpp} + world_gen.{h,cpp} — World 子類與 worldgen →</a></nav>
+
+<footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>／
+<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python build.py</code> 即同步。</footer>
+</body>
+</html>

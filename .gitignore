@@ -1,2 +1,5 @@
 projects/*/build/
 extern/
+# python 產出（code-map html build.py）
+__pycache__/
+*.pyc

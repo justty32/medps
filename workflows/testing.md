@@ -17,7 +17,7 @@ cmake -S projects/tests -B projects/tests/build && cmake --build projects/tests/
 
 # unit/integration tests（自製測試框架，單一執行檔；名稱依平台而異）
 ./projects/tests/build/bin/medp_test.linux.debug.64
-# 預期輸出結尾：16 / 16 passed（新增測試後更新此基準）
+# 預期輸出結尾：21 / 21 passed
 
 # lint / format：目前無設定
 
@@ -35,7 +35,7 @@ cmake -S projects/medp -B projects/medp/build -DMEDP_BUILD_GDEXTENSION=ON && cma
 
 ## 已知環境性失敗
 
-- 19 項測試在乾淨 build 下應全綠；任何紅燈都視為 regression。（2026-07-22 隨 Zone/ZoneManager 新核心整套重寫為 15 項；同日 World 子類落地加 4 項——kind round-trip、generate 決定性/sanity、未知 kind fail-fast，Linux g++ 實測 19/19。）
+- 21 項測試在乾淨 build 下應全綠；任何紅燈都視為 regression。（2026-07-22 隨 Zone/ZoneManager 新核心整套重寫為 15 項；同日 World 子類落地加 4 項——kind round-trip、generate 決定性/sanity、未知 kind fail-fast，Linux g++ 實測 19/19。2026-07-23 actor 基礎設施加 2 項（actor_defs_and_spawn、actor_roundtrip），2026-08-12 Windows MinGW 實測 21/21。）
 - **MinGW Makefiles 偶發**：建 `medp_static` 時 `ar` 打包可能報 `Error running link command: unknown error`（`ar` 本身正常，重跑 `cmake --build projects/medp/build` 即過）。非 regression。
 
 ## 何時不用

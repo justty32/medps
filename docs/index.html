@@ -104,10 +104,20 @@
         <p>Ruleset（規則庫，常駐）與 ZoneManager（世界狀態，可重建）兩個 scope 的界線。</p>
         <span class="path">work/design/lifecycle.md</span>
       </a>
-      <a class="card wide" href="work/architecture/gcore_overview.md">
+      <a class="card" href="work/architecture/gcore_overview.md">
         <h3>gcore 逐檔導覽</h3>
-        <p>遊戲核心框架（EnTT + cereal）的全域心智模型與依賴方向：zone = 一個 registry。</p>
+        <p>核心框架「現在長怎樣」的地圖：分層心智模型與依賴方向（zone = 一個 registry）。母檔，另有 zone+serialize、world+common 兩份子檔。</p>
         <span class="path">work/architecture/gcore_overview.md</span>
+      </a>
+      <a class="card" href="work/architecture/world_actor_game.md">
+        <h3>World／actor／遊戲原型沿革</h3>
+        <p>「這一期改了什麼」：Zone 子類化、gcore 目錄重整、actor 資料驅動 def、第一個真實 consumer。</p>
+        <span class="path">work/architecture/world_actor_game.md</span>
+      </a>
+      <a class="card wide" href="work/design/tome4_recommendations.md">
+        <h3>ToME4 研讀 → 重寫建議報告</h3>
+        <p>研讀 Tales of Maj'Eyal 架構後對 medps 的建議：位置模型、存檔、定址、排程、生成管線，附落地順序與現況。母檔為索引，內文分五份子檔。</p>
+        <span class="path">work/design/tome4_recommendations.md</span>
       </a>
     </div>
   </section>
@@ -118,22 +128,22 @@
     <div class="grid">
       <a class="card" href="references/entt_tutorial.md">
         <h3>EnTT 教學（medps 版）</h3>
-        <p>ECS 概念與 EnTT v3.16.0 在本專案的用法（single-header amalgamation）。</p>
+        <p>ECS 概念與 EnTT v3.16.0 在本專案的用法（single-header amalgamation）。母檔為索引，內文分基礎／view+system／序列化三份子檔。</p>
         <span class="path">references/entt_tutorial.md</span>
       </a>
       <a class="card" href="references/cereal_tutorial.md">
         <h3>cereal 教學（medps 版）</h3>
-        <p>以 cereal v1.3.2 取代 BinFSR 的序列化用法，全 header-only。</p>
+        <p>以 cereal v1.3.2 取代 BinFSR 的序列化用法，全 header-only。母檔為索引，內文分基礎／容器+版本／實務三份子檔。</p>
         <span class="path">references/cereal_tutorial.md</span>
       </a>
       <a class="card" href="references/zone_streaming_architecture.md">
         <h3>Zone / Registry 架構教學</h3>
-        <p>多 registry / zone 架構教學。<b>注意：內容對應重寫前的 GlobalManager/ZoneKey 舊架構，概念仍可參考、名詞已過期。</b></p>
+        <p>回答「<b>為什麼</b>是這個架構」——一 zone 一 registry 的動機、定址與身分的設計取捨、streaming 與存讀契約的代價。<b>2026-08-12 整份重寫</b>對應新核心。母檔為概念總覽，另有定址／生命週期兩份子檔。</p>
         <span class="path">references/zone_streaming_architecture.md</span>
       </a>
       <a class="card" href="references/how_to_add_component_and_system.md">
         <h3>如何新增 Component 與 System</h3>
-        <p>走一遍新增 component 與 per-zone system 的實際流程（含 all_components.h 登記）。</p>
+        <p>走一遍新增 component 與 per-zone system 的實際流程（含 all_components.h 登記）。<b>2026-08-12 已對齊新核心</b>——原本整份還在教已刪除的 GlobalManager／ZoneKey。</p>
         <span class="path">references/how_to_add_component_and_system.md</span>
       </a>
       <a class="card wide" href="references/godot_gdextension_setup.md">

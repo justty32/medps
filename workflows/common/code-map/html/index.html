@@ -9,27 +9,28 @@
 <body>
 
 <h1>medps 程式碼導覽</h1>
-<p class="meta">奇幻 4X 策略遊戲 C++20 後端（EnTT + cereal）· 核心約 1,100 行 ·
-照順序讀完約 1 小時</p>
+<p class="meta">奇幻 4X 策略遊戲 C++20 後端（EnTT + cereal）· 核心約 1,693 行 ·
+照順序讀完約 1.5 小時</p>
 
 <div class="hero">
 <b>全貌一句話：</b><code>ZoneManager</code> 管一堆 <code>Zone</code>
-（一個 zone = 一個 <code>entt::registry</code> + 自帶多層 tile 地圖），zone id 是零語意的
-單調序號、由 <code>create_child</code> 配發；存讀檔 = 一 zone 一檔（zone_io 兩塊接合）＋
-<code>manifest.bin</code> 記 id 計數器；<code>tick()</code> 對每個已載入 zone（含 root）
-跑所有註冊的 system。
+（繼承基底，<code>World</code> 是第一個子類；一個 zone = 一個 <code>entt::registry</code> +
+自帶多層 tile 地圖），zone id 是零語意的單調序號、由 <code>create_child</code> 配發；
+存讀檔 = 一 zone 一檔（zone_io 兩塊接合，kind tag 決定子類）＋<code>manifest.bin</code>
+記 id 計數器；<code>tick()</code> 對每個已載入 zone（含 root）跑所有註冊的 system。
+actor（地點/部隊）是 ECS 組合而非 C++ 繼承。
 </div>
 
 <h2>資料流</h2>
 <div class="flow">
-  <div class="box">components/<br><span class="dim">POD 資料</span></div>
+  <div class="box">common/ + world/components<br><span class="dim">POD 資料</span></div>
   <div class="arrow">掛在</div>
-  <div class="box">Zone<br><span class="dim">registry + layers</span></div>
+  <div class="box">Zone / World<br><span class="dim">registry + layers</span></div>
   <div class="arrow">管理</div>
   <div class="box">ZoneManager<br><span class="dim">root + 配號 + tick</span></div>
 </div>
 <div class="flow">
-  <div class="box">zone_io<br><span class="dim">Zone ↔ 位元組（兩塊）</span></div>
+  <div class="box">zone_io<br><span class="dim">Zone ↔ 位元組（兩塊，kind tag 決定子類）</span></div>
   <div class="arrow">→</div>
   <div class="box">dir/&lt;16hex&gt;.bin<br><span class="dim">一 zone 一檔</span></div>
   <div class="arrow">＋</div>
@@ -45,36 +46,41 @@
   <p class="dim">2 檔 · 266 行</p>
 </a>
 <a class="card" href="02-zone-core.html">
-  <h3>第 2 站 zone.h + tile.h — 核心資料結構</h3>
-  <p>Zone{id, parent, reg, layers}：一個 zone = 一個 registry + 自帶多層 tile 地圖。</p>
-  <p class="dim">2 檔 · 55 行</p>
+  <h3>第 2 站 zone/zone.h + tile.h + zone.cpp — 核心資料結構</h3>
+  <p>Zone 是繼承基底：{id, parent, reg, layers} ＋ ZoneKind tag、make_zone 工廠、zone_cast。</p>
+  <p class="dim">3 檔 · 100 行</p>
 </a>
-<a class="card" href="03-components.html">
-  <h3>第 3 站 components/ — 資料積木</h3>
-  <p>兩個 POD component：Position（x,y,z）與 Velocity（示範用）。</p>
-  <p class="dim">2 檔 · 25 行</p>
+<a class="card" href="03-common-actor.html">
+  <h3>第 3 站 common/ — actor 身分層</h3>
+  <p>跨 Zone 子類共用：Name+Owner=身分，Location{kind}/Unit{kind}=家族；kind 是資料驅動 def。</p>
+  <p class="dim">5 檔 · 172 行</p>
 </a>
-<a class="card" href="04-serialize.html">
-  <h3>第 4 站 serialize/ — 存讀檔管線</h3>
+<a class="card" href="04-world-components.html">
+  <h3>第 4 站 world/components/ + world/systems/ — World 專屬積木與 system 範本</h3>
+  <p>Position/Velocity 兩個 POD component；movement.h 是所有未來 system 的形狀範本。</p>
+  <p class="dim">3 檔 · 51 行</p>
+</a>
+<a class="card" href="05-world-gen.html">
+  <h3>第 5 站 world/world.{h,cpp} + world_gen.{h,cpp} — World 子類與 worldgen</h3>
+  <p>World : Zone 第一個子類；world_gen 是純函式，不認識 World 型別，libtcod FBM 決定性生成。</p>
+  <p class="dim">4 檔 · 113 行</p>
+</a>
+<a class="card" href="06-serialize.html">
+  <h3>第 6 站 serialize/ — 存讀檔管線</h3>
   <p>registry_io：registry ↔ 位元組；zone_io：完整 Zone 兩塊接合。AllComponents 是唯一登記點。</p>
-  <p class="dim">4 檔 · 130 行</p>
+  <p class="dim">4 檔 · 153 行</p>
 </a>
-<a class="card" href="05-zone-manager.html">
-  <h3>第 5 站 ZoneManager — 總管</h3>
-  <p>把前四站接起來：id 配發、開檔協定、tick、存讀檔與損毀防護。</p>
-  <p class="dim">2 檔 · 224 行</p>
+<a class="card" href="07-zone-manager.html">
+  <h3>第 7 站 zone/zone_manager.h + .cpp — 總管</h3>
+  <p>把前六站接起來：id 配發（含 kind）、開檔協定、tick、存讀檔與損毀防護。</p>
+  <p class="dim">2 檔 · 225 行</p>
 </a>
-<a class="card" href="06-systems.html">
-  <h3>第 6 站 systems/movement.h — system 的樣板</h3>
-  <p>所有未來 system 的形狀範本：自由函式、吃 Zone&；位置變更收口於 move_by。</p>
-  <p class="dim">1 檔 · 26 行</p>
+<a class="card" href="08-tests.html">
+  <h3>第 8 站 projects/tests/src/main.cpp — 可執行的規格書</h3>
+  <p>21 個 case，每個 test 就是一段「這功能該怎麼用」的示範。</p>
+  <p class="dim">1 檔 · 544 行</p>
 </a>
-<a class="card" href="07-tests.html">
-  <h3>第 7 站 projects/tests/src/main.cpp — 可執行的規格書</h3>
-  <p>15 個 case，每個 test 就是一段「這功能該怎麼用」的示範。</p>
-  <p class="dim">1 檔 · 368 行</p>
-</a>
-<a class="card" href="08-gbind.html">
+<a class="card" href="09-gbind.html">
   <h3>附錄 gbind/ — Godot GDExtension 接線</h3>
   <p>目前只有 smoke-test facade，可略過；動它前讀 projects/archived/gd/。</p>
   <p class="dim">4 檔 · 69 行</p>
@@ -83,19 +89,21 @@
 
 <h2>架構不變量（修改前必知）</h2>
 <ul class="points">
-<li><b>多 registry / zone 生命週期</b>——一個 zone = 一個 <code>Zone</code>（registry＋自帶多層地圖），由 ZoneManager 管理；root 永久存活、放全局實體，其餘 zones 按需載入/卸載。zone id 是零語意單調序號、由 create_child 單點配發，磁碟 path 由 id 推導、不另存全域 zone 清單。</li><li><b>序列化</b>——EnTT snapshot 遍歷 registry，cereal PortableBinaryArchive 負責位元格式，透過 entt_cereal_archive.h 橋接。component 型別清單的單一來源是 all_components.h 的 <code>AllComponents</code>，save/load 兩邊共用。存檔無版本欄位——格式變更＝刪存檔目錄。</li><li><b>元件即資料</b>——component 盡量是 POD aggregate；entity 之間的參照存 <code>entt::entity</code>。system 寫成吃 <code>Zone&amp;</code> 的自由函式；位置變更一律收口於 <code>systems::move_by</code>。</li>
+<li><b>多 registry / zone 生命週期</b>——一個 zone = 一個 <code>Zone</code>（繼承基底，registry＋自帶多層地圖），由 ZoneManager 管理；root 永久存活、放全局實體，其餘 zones 按需載入/卸載。zone id 是零語意單調序號、由 create_child 單點配發，磁碟 path 由 id 推導、不另存全域 zone 清單。<code>World</code> 是目前唯一子類，經 <code>ZoneKind</code> tag／<code>make_zone</code>／<code>zone_cast&lt;T&gt;</code> 分派。</li><li><b>序列化</b>——EnTT snapshot 遍歷 registry，cereal PortableBinaryArchive 負責位元格式，透過 entt_cereal_archive.h 橋接。component 型別清單的單一來源是 all_components.h 的 <code>AllComponents</code>，save/load 兩邊共用。存檔無版本欄位——格式變更＝刪存檔目錄。</li><li><b>元件即資料</b>——component 盡量是 POD aggregate；entity 之間的參照存 <code>entt::entity</code>。system 寫成吃 <code>Zone&amp;</code> 的自由函式；位置變更一律收口於 <code>systems::move_by</code>。</li><li><b>actor＝組合而非繼承</b>——地點/部隊的共同基底不是 C++ 父類，是共用元件（Name＋Owner＋Location{kind}／Unit{kind}）。種類是資料驅動 def（住在 root 的實體），actor 以穩定 <code>uint64_t</code> id 參照，跨 registry 安全。</li>
 </ul>
 
 <h2>真相層連結</h2>
 <ul class="points">
-  <li><a href="../CODE_TOUR.md">CODE_TOUR.md</a>——線性導讀（本導覽的 Markdown 真相層）</li>
+  <li><a href="../CODE_TOUR.md">CODE_TOUR.md</a>——線性導讀上冊（本導覽的 Markdown 真相層）</li>
+  <li><a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>——線性導讀下冊（World 子類與 actor 身分層）</li>
   <li><a href="../CODE_MAP.md">CODE_MAP.md</a>——agent 修改前的查表</li>
   <li><a href="../../../../AGENTS.md">AGENTS.md</a>——專案備忘與鐵律</li>
   <li><a href="../../../../docs/work/progress_overview.md">docs/work/progress_overview.md</a>——進度總覽</li>
 </ul>
 
 <footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
- <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_MAP.md">CODE_MAP.md</a>；
-程式碼更新後重跑 <code>python3 build.py</code> 即同步。</footer>
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>／
+<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python build.py</code> 即同步。</footer>
 </body>
 </html>

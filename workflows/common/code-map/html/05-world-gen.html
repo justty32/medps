@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 站 world/world.{h,cpp} + world_gen.{h,cpp} — World 子類與 worldgen</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+
+<nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
+<h1>第 5 站 world/world.{h,cpp} + world_gen.{h,cpp} — World 子類與 worldgen</h1>
+<p class="meta">4 個檔案，共 113 行 ·
+ 對照 <a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a></p>
+<p><code>World : Zone</code> 是<b>第一個 Zone 子類</b>（三層願景的最上層，時間模型純回合、tick 分派未動工）。<code>WorldGenParams gen</code> 隨 save_extra/load_extra 序列化——存檔即記住生成配方，讀回後可用同一組參數重生成同一張圖。<code>generate()</code> 是薄殼：挑 <code>layers[0]</code> 轉呼 <code>world_gen::generate(gen, layers[0], id)</code>。</p><p><code>world_gen</code> 是純函式模組，<b>不認識 World 型別</b>，只認「配方＋一張grid」：libtcod 2.2.2 headless 的 FBM 高度圖 → sea_level 切水陸 → 溫/濕度場分biome。同 seed 必產同圖（RNG 用 Mersenne Twister 鎖 seed，決定性）；libtcod 依賴收在 .cpp 不外洩。</p>
+<h2>看什麼</h2>
+<ul class="points">
+<li>World : Zone：第一個子類，只放 worldgen 與世界尺度資料。 <a class="loc" href="#projects-medp-src-gcore-world-world-h-L8">world.h:8</a></li><li>generate() 薄殼：挑 layers[0] 轉呼 world_gen::generate。 <a class="loc" href="#projects-medp-src-gcore-world-world-cpp-L5">world.cpp:5</a></li><li>WorldGenParams：生成配方，全部有預設值、隨存檔序列化。 <a class="loc" href="#projects-medp-src-gcore-world-world-gen-h-L18">world_gen.h:18</a></li><li>world_gen::generate 簽章：純函式，不依賴 World 型別。 <a class="loc" href="#projects-medp-src-gcore-world-world-gen-h-L34">world_gen.h:34</a></li><li>Field：FBM 場，seed 派生錯開（高度/溫度/濕度三張獨立場）。 <a class="loc" href="#projects-medp-src-gcore-world-world-gen-cpp-L10">world_gen.cpp:10</a></li><li>sea_level 切水陸、溫濕度分 biome 的實作。 <a class="loc" href="#projects-medp-src-gcore-world-world-gen-cpp-L45">world_gen.cpp:45</a></li>
+</ul>
+<div class="quiz"><b>讀完該能回答：</b>world_gen::generate 為什麼不依賴 World 型別？同一組 WorldGenParams 兩次呼叫會得到一樣的地圖嗎？</div>
+
+<section class="file" id="projects-medp-src-gcore-world-world-h">
+  <h3><code>projects/medp/src/gcore/world/world.h</code> <span class="dim">（19 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/world.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-world-h-L1"><a class="no" href="#projects-medp-src-gcore-world-world-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L2"><a class="no" href="#projects-medp-src-gcore-world-world-h-L2">2</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone/zone.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L3"><a class="no" href="#projects-medp-src-gcore-world-world-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;world_gen.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L4"><a class="no" href="#projects-medp-src-gcore-world-world-h-L4">4</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L5"><a class="no" href="#projects-medp-src-gcore-world-world-h-L5">5</a><span class="src"><span class="cm">// 第一個 Zone 子類：世界層地圖（三層願景的最上層，時間模型純回合——tick 分派未動工）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L6"><a class="no" href="#projects-medp-src-gcore-world-world-h-L6">6</a><span class="src"><span class="cm">// 只放 worldgen 與世界尺度資料；全局實體仍歸 root，別把全局邏輯堆進來。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L7"><a class="no" href="#projects-medp-src-gcore-world-world-h-L7">7</a><span class="src"><span class="cm">// worldgen 配方（WorldGenParams）＋terrain 常數＋演算法都在 world_gen.{h,cpp}。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L8"><a class="no" href="#projects-medp-src-gcore-world-world-h-L8">8</a><span class="src"><span class="kw">struct</span> World : Zone {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L9"><a class="no" href="#projects-medp-src-gcore-world-world-h-L9">9</a><span class="src">    WorldGenParams gen;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L10"><a class="no" href="#projects-medp-src-gcore-world-world-h-L10">10</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L11"><a class="no" href="#projects-medp-src-gcore-world-world-h-L11">11</a><span class="src">    <span class="kw">static</span> <span class="kw">constexpr</span> ZoneKind KIND = ZoneKind::World;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L12"><a class="no" href="#projects-medp-src-gcore-world-world-h-L12">12</a><span class="src">    ZoneKind kind() <span class="kw">const</span> <span class="kw">override</span> { <span class="kw">return</span> KIND; }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L13"><a class="no" href="#projects-medp-src-gcore-world-world-h-L13">13</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L14"><a class="no" href="#projects-medp-src-gcore-world-world-h-L14">14</a><span class="src">    <span class="kw">void</span> save_extra(cereal::PortableBinaryOutputArchive&amp; ar) <span class="kw">override</span> { ar(gen); }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L15"><a class="no" href="#projects-medp-src-gcore-world-world-h-L15">15</a><span class="src">    <span class="kw">void</span> load_extra(cereal::PortableBinaryInputArchive&amp; ar) <span class="kw">override</span> { ar(gen); }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L16"><a class="no" href="#projects-medp-src-gcore-world-world-h-L16">16</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L17"><a class="no" href="#projects-medp-src-gcore-world-world-h-L17">17</a><span class="src">    <span class="cm">// 依 gen 重建 layers[0]；薄殼，實作委派給 world_gen::generate（見 world_gen.cpp）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L18"><a class="no" href="#projects-medp-src-gcore-world-world-h-L18">18</a><span class="src">    <span class="kw">void</span> generate();</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-h-L19"><a class="no" href="#projects-medp-src-gcore-world-world-h-L19">19</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-world-world-cpp">
+  <h3><code>projects/medp/src/gcore/world/world.cpp</code> <span class="dim">（5 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/world.cpp">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-world-cpp-L1"><a class="no" href="#projects-medp-src-gcore-world-world-cpp-L1">1</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;world.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-cpp-L2"><a class="no" href="#projects-medp-src-gcore-world-world-cpp-L2">2</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-cpp-L3"><a class="no" href="#projects-medp-src-gcore-world-world-cpp-L3">3</a><span class="src"><span class="cm">// 薄殼：真正的 worldgen 在 world_gen.cpp（只認配方＋一張 grid，不依賴 World）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-cpp-L4"><a class="no" href="#projects-medp-src-gcore-world-world-cpp-L4">4</a><span class="src"><span class="cm">// World 負責挑 layer——目前世界圖是單層 layers[0]——並把自己的 id 傳去供錯誤定位。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-cpp-L5"><a class="no" href="#projects-medp-src-gcore-world-world-cpp-L5">5</a><span class="src"><span class="kw">void</span> World::generate() { world_gen::generate(gen, layers[<span class="nu">0</span>], id); }</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-world-world-gen-h">
+  <h3><code>projects/medp/src/gcore/world/world_gen.h</code> <span class="dim">（36 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/world_gen.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L1"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L2"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L3"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L3">3</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../util/tdarray.hpp&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L4"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L4">4</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone/tile.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L5"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L5">5</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L6"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L6">6</a><span class="src"><span class="cm">// World 的 worldgen 配方＋terrain 詞彙＋生成入口。演算法本體（libtcod FBM）在 .cpp，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L7"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L7">7</a><span class="src"><span class="cm">// libtcod 依賴不外洩。本模組只認「配方＋一張 tile 格網」，不依賴 World 型別。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L8"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L8">8</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L9"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L9">9</a><span class="src"><span class="cm">// biome 佔位 def id（寫進 Tile::terrain）。0 保留為「未生成」。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L10"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L10">10</a><span class="src"><span class="cm">// 將來 Ruleset 的 terrain def 表落地時整組搬遷；屆時存檔照政策作廢重生。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L11"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L11">11</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint32_t</span> TERRAIN_OCEAN     = <span class="nu">1</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L12"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L12">12</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint32_t</span> TERRAIN_TUNDRA    = <span class="nu">2</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L13"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L13">13</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint32_t</span> TERRAIN_GRASSLAND = <span class="nu">3</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L14"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L14">14</a><span class="src"><span class="kw">inline</span> <span class="kw">constexpr</span> <span class="kw">uint32_t</span> TERRAIN_FOREST    = <span class="nu">4</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L15"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L15">15</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L16"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L16">16</a><span class="src"><span class="cm">// World 層生成參數。全部有預設值；隨 save_extra 序列化——存檔即記住生成配方，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L17"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L17">17</a><span class="src"><span class="cm">// 讀回後可用同一組參數重生成同一張圖。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L18"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L18">18</a><span class="src"><span class="kw">struct</span> WorldGenParams {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L19"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L19">19</a><span class="src">    <span class="kw">int32_t</span>  width = <span class="nu">200</span>, height = <span class="nu">200</span>;  <span class="cm">// 願景尺度：World 200×200，一格≈數公里</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L20"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L20">20</a><span class="src">    <span class="kw">uint32_t</span> seed = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L21"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L21">21</a><span class="src">    <span class="kw">float</span>    sea_level   = <span class="nu">0.40f</span>;  <span class="cm">// 高度 0~1 的水陸閾值：以下是海</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L22"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L22">22</a><span class="src">    <span class="kw">float</span>    noise_scale = <span class="nu">0.05f</span>;  <span class="cm">// 取樣頻率：越小地形塊越大</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L23"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L23">23</a><span class="src">    <span class="kw">int32_t</span>  octaves     = <span class="nu">5</span>;      <span class="cm">// FBM 疊代層數</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L24"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L24">24</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L25"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L25">25</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L26"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L26">26</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(width, height, seed, sea_level, noise_scale, octaves); }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L27"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L27">27</a><span class="src">};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L28"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L28">28</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L29"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L29">29</a><span class="src"><span class="kw">namespace</span> world_gen {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L30"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L30">30</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L31"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L31">31</a><span class="src"><span class="cm">// 依 gen 重建單一 layer 的 grid：FBM 高度場 → sea_level 切水陸 → 溫/濕度場分 biome，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L32"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L32">32</a><span class="src"><span class="cm">// 寫 Tile::terrain＋陸地設 TILE_WALKABLE。整層清掉重寫（內部 alloc），不做增量；</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L33"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L33">33</a><span class="src"><span class="cm">// 同 seed 必產同圖（決定性）。尺寸非正 → throw（zone_id 僅供錯誤訊息定位）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L34"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L34">34</a><span class="src"><span class="kw">void</span> generate(<span class="kw">const</span> WorldGenParams&amp; gen, tdarray&lt;Tile&gt;&amp; grid, <span class="kw">uint64_t</span> zone_id = <span class="nu">0</span>);</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L35"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L35">35</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-h-L36"><a class="no" href="#projects-medp-src-gcore-world-world-gen-h-L36">36</a><span class="src">}  <span class="cm">// namespace world_gen</span></span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-world-world-gen-cpp">
+  <h3><code>projects/medp/src/gcore/world/world_gen.cpp</code> <span class="dim">（53 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/world/world_gen.cpp">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L1"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L1">1</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;world_gen.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L2"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L2">2</a><span class="src"><span class="pp">#include</span> &lt;stdexcept&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L3"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L3">3</a><span class="src"><span class="pp">#include</span> &lt;string&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L4"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L4">4</a><span class="src"><span class="pp">#include</span> &lt;libtcod/mersenne.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L5"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L5">5</a><span class="src"><span class="pp">#include</span> &lt;libtcod/noise.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L6"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L6">6</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L7"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L7">7</a><span class="src"><span class="kw">namespace</span> {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L8"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L8">8</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L9"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L9">9</a><span class="src"><span class="cm">// 一張 0~1 的 2D FBM 場。RNG 用 Mersenne Twister 鎖 seed，取樣結果決定性。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L10"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L10">10</a><span class="src"><span class="kw">struct</span> Field {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L11"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L11">11</a><span class="src">    TCODRandom rng;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L12"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L12">12</a><span class="src">    TCODNoise  noise;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L13"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L13">13</a><span class="src">    <span class="kw">float</span>      scale;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L14"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L14">14</a><span class="src">    <span class="kw">float</span>      octaves;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L15"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L15">15</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L16"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L16">16</a><span class="src">    Field(<span class="kw">uint32_t</span> seed, <span class="kw">float</span> scale, <span class="kw">int32_t</span> octaves)</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L17"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L17">17</a><span class="src">        : rng{seed, TCOD_RNG_MT},</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L18"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L18">18</a><span class="src">          noise{<span class="nu">2</span>, TCOD_NOISE_DEFAULT_HURST, TCOD_NOISE_DEFAULT_LACUNARITY, &amp;rng, TCOD_NOISE_SIMPLEX},</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L19"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L19">19</a><span class="src">          scale{scale},</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L20"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L20">20</a><span class="src">          octaves{<span class="kw">static_cast</span>&lt;<span class="kw">float</span>&gt;(octaves)} {}</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L21"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L21">21</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L22"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L22">22</a><span class="src">    <span class="kw">float</span> at(<span class="kw">int</span> x, <span class="kw">int</span> y) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L23"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L23">23</a><span class="src">        <span class="kw">const</span> <span class="kw">float</span> f[<span class="nu">2</span>] = {x * scale, y * scale};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L24"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L24">24</a><span class="src">        <span class="kw">return</span> (noise.getFbm(f, octaves) + <span class="nu">1.0f</span>) * <span class="nu">0.5f</span>;  <span class="cm">// -1~1 → 0~1</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L25"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L25">25</a><span class="src">    }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L26"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L26">26</a><span class="src">};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L27"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L27">27</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L28"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L28">28</a><span class="src">}  <span class="cm">// namespace</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L29"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L29">29</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L30"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L30">30</a><span class="src"><span class="kw">void</span> world_gen::generate(<span class="kw">const</span> WorldGenParams&amp; gen, tdarray&lt;Tile&gt;&amp; grid, <span class="kw">uint64_t</span> zone_id) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L31"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L31">31</a><span class="src">    <span class="kw">if</span> (gen.width &lt;= <span class="nu">0</span> || gen.height &lt;= <span class="nu">0</span>)</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L32"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L32">32</a><span class="src">        <span class="kw">throw</span> std::runtime_error(</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L33"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L33">33</a><span class="src">            <span class="st">&quot;world_gen::generate: 尺寸非正: &quot;</span> + std::to_string(gen.width) + <span class="st">&quot;x&quot;</span> +</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L34"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L34">34</a><span class="src">            std::to_string(gen.height) + <span class="st">&quot; (zone id=&quot;</span> + std::to_string(zone_id) + <span class="st">&quot;)&quot;</span>);</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L35"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L35">35</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L36"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L36">36</a><span class="src">    <span class="cm">// 高度/溫度/濕度三張獨立場，seed 派生錯開。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L37"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L37">37</a><span class="src">    Field height{gen.seed,     gen.noise_scale, gen.octaves};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L38"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L38">38</a><span class="src">    Field temp  {gen.seed + <span class="nu">1</span>, gen.noise_scale, gen.octaves};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L39"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L39">39</a><span class="src">    Field humid {gen.seed + <span class="nu">2</span>, gen.noise_scale, gen.octaves};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L40"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L40">40</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L41"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L41">41</a><span class="src">    grid.alloc(<span class="kw">static_cast</span>&lt;<span class="kw">uint32_t</span>&gt;(gen.width), <span class="kw">static_cast</span>&lt;<span class="kw">uint32_t</span>&gt;(gen.height));</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L42"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L42">42</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L43"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L43">43</a><span class="src">    grid.eachxy([&amp;](Tile&amp; t, <span class="kw">int</span> x, <span class="kw">int</span> y) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L44"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L44">44</a><span class="src">        <span class="kw">if</span> (height.at(x, y) &lt;= gen.sea_level) {</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L45"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L45">45</a><span class="src">            t = Tile{TERRAIN_OCEAN, <span class="nu">0</span>};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L46"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L46">46</a><span class="src">            <span class="kw">return</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L47"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L47">47</a><span class="src">        }</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L48"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L48">48</a><span class="src">        <span class="kw">uint32_t</span> biome = TERRAIN_GRASSLAND;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L49"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L49">49</a><span class="src">        <span class="kw">if</span> (temp.at(x, y) &lt; <span class="nu">0.3f</span>)        biome = TERRAIN_TUNDRA;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L50"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L50">50</a><span class="src">        <span class="kw">else</span> <span class="kw">if</span> (humid.at(x, y) &gt;= <span class="nu">0.4f</span>) biome = TERRAIN_FOREST;</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L51"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L51">51</a><span class="src">        t = Tile{biome, TILE_WALKABLE};</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L52"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L52">52</a><span class="src">    });</span></div>
+<div class="line" id="projects-medp-src-gcore-world-world-gen-cpp-L53"><a class="no" href="#projects-medp-src-gcore-world-world-gen-cpp-L53">53</a><span class="src">}</span></div>
+  </div>
+</section>
+<nav class="pager"><a href="04-world-components.html">← 第 4 站 world/components/ + world/systems/ — World 專屬積木與 system 範本</a><a href="06-serialize.html">第 6 站 serialize/ — 存讀檔管線 →</a></nav>
+
+<footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>／
+<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python build.py</code> 即同步。</footer>
+</body>
+</html>

@@ -80,6 +80,7 @@ STATIONS = [
         "slug": "01-util",
         "title": "第 1 站 util/ — 容器與巨集工具",
         "tagline": "tdarray：唯一的容器工具，row-major 2D 陣列；mydef：metaprogramming 巨集。",
+        "tour": "CODE_TOUR.md",
         "files": ["projects/medp/src/gcore/util/tdarray.hpp", "projects/medp/src/gcore/util/mydef.h"],
         "intro": [
             "<code>tdarray&lt;T&gt;</code> 用單一 vector 打平存 2D 格網"
@@ -102,52 +103,159 @@ STATIONS = [
     },
     {
         "slug": "02-zone-core",
-        "title": "第 2 站 zone.h + tile.h — 核心資料結構",
-        "tagline": "Zone{id, parent, reg, layers}：一個 zone = 一個 registry + 自帶多層 tile 地圖。",
-        "files": ["projects/medp/src/gcore/zone/tile.h", "projects/medp/src/gcore/zone/zone.h"],
+        "title": "第 2 站 zone/zone.h + tile.h + zone.cpp — 核心資料結構",
+        "tagline": "Zone 是繼承基底：{id, parent, reg, layers} ＋ ZoneKind tag、make_zone 工廠、zone_cast。",
+        "tour": "CODE_TOUR.md",
+        "files": [
+            "projects/medp/src/gcore/zone/tile.h",
+            "projects/medp/src/gcore/zone/zone.h",
+            "projects/medp/src/gcore/zone/zone.cpp",
+        ],
         "intro": [
-            "zone id 是<b>零座標語意</b>的裸 <code>uint64_t</code> 單調序號"
-            "（舊 ZoneKey 位元打包已移除）；層級只活在 <code>parent</code> 鏈上。"
-            "<code>ZONE_ROOT=0</code> 永駐、沒有地圖，放非地圖的全局實體。",
+            "zone id 是<b>零座標語意</b>的裸 <code>uint64_t</code> 單調序號；層級只活在 "
+            "<code>parent</code> 鏈上。<code>ZONE_ROOT=0</code> 永駐、沒有地圖，放非地圖的"
+            "全局實體（陣營/神祇/具名角色）。",
             "<code>layers</code> 是 <code>map&lt;int, tdarray&lt;Tile&gt;&gt;</code>，"
             "鍵即 z（地面=0、往下為負、稀疏）。地圖是 zone 的固有結構、不走 ECS——"
-            "代價是 registry snapshot 不含它，存檔由 zone_io 分兩塊處理（見第 4 站）。",
+            "代價是 registry snapshot 不含它，存檔由 zone_io 分兩塊處理（見第 6 站）。",
+            "<b>Zone 是繼承基底</b>：virtual dtor 使隱式 move 被抑制——Zone 不可複製也不可移動，"
+            "一律經 <code>unique_ptr</code>/參照持有，子類物件切片結構上不可能發生。"
+            "<code>ZoneKind</code> 是存檔 kind tag（續編只加號、不重排）；<code>make_zone</code> "
+            "依 tag 建構對應子類（未知 tag throw）；<code>zone_cast&lt;T&gt;</code> 是型別安全"
+            "向下轉型。<code>save_extra</code>/<code>load_extra</code> 是子類專屬資料的序列化"
+            "掛鉤，基底 no-op；目前唯一子類 <code>World</code> 見第 5 站。",
         ],
         "points": [
             ("Tile{terrain, flags}：不是 component；flags 快取通行性。", 0, "struct Tile"),
             ("TILE_WALKABLE / TILE_BLOCKS_SIGHT 通行 flags。", 0, "TILE_WALKABLE"),
             ("Zone 本體：身分直接掛 struct，不再用 placeholder entity 攜帶。", 1, "struct Zone"),
             ("layers：鍵即 z 的稀疏多層地圖。", 1, "std::map<int, tdarray<Tile>> layers"),
-            ("registry 不可複製 → Zone 只能移動。", 1, "entt::registry reg"),
+            ("virtual dtor：抑制隱式 move/copy，子類只能經指標/參照持有。",
+             1, "virtual ~Zone() = default;"),
+            ("ZoneKind：存檔 kind tag，Plain=0／World=1。", 1, "enum class ZoneKind"),
+            ("save_extra/load_extra：子類專屬資料的序列化掛鉤。", 1, "virtual void save_extra"),
+            ("zone_cast<T>：型別安全向下轉型。", 1, "T* zone_cast(Zone* z)"),
+            ("make_zone 工廠實作：未知 kind throw，絕不靜默退回 Plain。",
+             2, "std::unique_ptr<Zone> make_zone(ZoneKind kind) {"),
         ],
-        "quiz": "為什麼地圖掛在 Zone 上而不是做成 component？代價是什麼？"
-                "（答案在 layers 的註解。）",
+        "quiz": "為什麼地圖掛在 Zone 上而不是做成 component？子類要序列化自己的資料，"
+                "該覆寫哪兩個掛鉤？",
     },
     {
-        "slug": "03-components",
-        "title": "第 3 站 components/ — 資料積木",
-        "tagline": "兩個 POD component：Position（x,y,z）與 Velocity（示範用）。",
+        "slug": "03-common-actor",
+        "title": "第 3 站 common/ — actor 身分層",
+        "tagline": "跨 Zone 子類共用：Name+Owner=身分，Location{kind}/Unit{kind}=家族；kind 是資料驅動 def。",
+        "tour": "CODE_TOUR_world_actor.md",
         "files": [
-            "projects/medp/src/gcore/components/position.h",
-            "projects/medp/src/gcore/components/velocity.h",
+            "projects/medp/src/gcore/common/components/name.h",
+            "projects/medp/src/gcore/common/components/owner.h",
+            "projects/medp/src/gcore/common/components/location.h",
+            "projects/medp/src/gcore/common/components/unit.h",
+            "projects/medp/src/gcore/common/actor.h",
         ],
         "intro": [
-            "全部是 POD aggregate + <code>serialize()</code> 成員；entity 之間的參照存 "
-            "<code>entt::entity</code>。",
+            "<code>common/</code> 是「可用於多數 Zone 子類的組件」。actor（地點/部隊的共同基底）"
+            "在 ECS 裡<b>不是 C++ 父類，是一組共用元件</b>：身分＝Name＋Owner；"
+            "家族＝Location{kind} 或 Unit{kind}（互斥，一個 actor 只屬一族）；放置＝Position"
+            "（world/components/，見第 4 站）——刻意與身分分離，spawn 不掛。",
+            "種類（kind）不是 enum，是<b>資料驅動的 def</b>：LocationKind{id}/UnitKind{id}＋Name"
+            "掛在 <b>root</b> 的定義實體上；actor 以穩定 <code>uint64_t</code> id 參照 def"
+            "（跨 registry 安全，比照 zone id / Owner.faction）。要新增種類＝多建一個 def 實體，"
+            "不改任何 enum。",
+        ],
+        "points": [
+            ("Name{value}：actor 顯示名，兩大家族共用。", 0, "struct Name"),
+            ("Owner{faction}：陣營穩定 id，0=無主/中立。", 1, "struct Owner"),
+            ("LocationKind{id}：地點種類 def，掛在 root。", 2, "struct LocationKind"),
+            ("Location{kind}：地點 actor 的家族 tag，kind 參照 def id。", 2, "struct Location {"),
+            ("UnitKind{id}：部隊種類 def，掛在 root。", 3, "struct UnitKind"),
+            ("Unit{kind}：部隊 actor 的家族 tag。", 3, "struct Unit {"),
+            ("require_root：fail-fast 檢查 def 只能掛在 root，否則 throw。",
+             4, "inline void require_root"),
+            ("define_location/define_unit：在 root 建種類 def。",
+             4, "inline entt::entity define_location"),
+            ("find_location_def：依 id 在 root 線性掃找 def，找不到回 entt::null。",
+             4, "inline entt::entity find_location_def"),
+            ("spawn_location/spawn_unit：在某 zone 建 actor（Name+Owner+家族 tag）。",
+             4, "inline entt::entity spawn_location"),
+        ],
+        "quiz": "actor 的「基底」在這個 codebase 裡是什麼形式？為什麼 kind 用 def 實體"
+                "而不是 enum？",
+    },
+    {
+        "slug": "04-world-components",
+        "title": "第 4 站 world/components/ + world/systems/ — World 專屬積木與 system 範本",
+        "tagline": "Position/Velocity 兩個 POD component；movement.h 是所有未來 system 的形狀範本。",
+        "tour": "CODE_TOUR_world_actor.md",
+        "files": [
+            "projects/medp/src/gcore/world/components/position.h",
+            "projects/medp/src/gcore/world/components/velocity.h",
+            "projects/medp/src/gcore/world/systems/movement.h",
+        ],
+        "intro": [
+            "World 子類專屬的 POD component（跟 common/ 的身分層分開放，因為不是所有 Zone 子類"
+            "都要）。全部是 POD aggregate + <code>serialize()</code> 成員。"
             "<b>鐵律：新增 component 必須同步登記 serialize/all_components.h 的 "
-            "AllComponents</b>，否則存檔會默默漏掉它（見第 4 站）。",
+            "AllComponents</b>，否則存檔會默默漏掉它（見第 6 站）。",
+            "26 行 <code>movement.h</code> 示範「system 該長什麼樣」：簽章 "
+            "<code>void(Zone&amp;)</code> 即 ZoneSystem，可直接 "
+            "<code>zm.add_zone_system(systems::movement)</code> 註冊。位置變更一律經 "
+            "<code>move_by</code> 收口、不直改 Position——將來 tile flag 檢查（可走性）、"
+            "空間索引維護都掛在這個口上。",
         ],
         "points": [
             ("Position{x,y,z}：z 即 Zone::layers 的鍵；有 .x/.y 故滿足 tdarray 的 "
              "is_coor concept。", 0, "struct Position"),
             ("Velocity{dx,dy}：每 tick 移動步（示範用）。", 1, "struct Velocity"),
+            ("move_by：位置變更的唯一入口。", 2, "inline void move_by"),
+            ("movement：view 遍歷帶 entity，交給 move_by。", 2, "inline void movement"),
         ],
-        "quiz": "新增一個 component 除了寫 struct 本身，還必須改哪個檔？",
+        "quiz": "新增一個 component 除了寫 struct 本身，還必須改哪個檔？要新增一個 system，"
+                "需要改 ZoneManager 嗎？",
     },
     {
-        "slug": "04-serialize",
-        "title": "第 4 站 serialize/ — 存讀檔管線",
+        "slug": "05-world-gen",
+        "title": "第 5 站 world/world.{h,cpp} + world_gen.{h,cpp} — World 子類與 worldgen",
+        "tagline": "World : Zone 第一個子類；world_gen 是純函式，不認識 World 型別，libtcod FBM 決定性生成。",
+        "tour": "CODE_TOUR_world_actor.md",
+        "files": [
+            "projects/medp/src/gcore/world/world.h",
+            "projects/medp/src/gcore/world/world.cpp",
+            "projects/medp/src/gcore/world/world_gen.h",
+            "projects/medp/src/gcore/world/world_gen.cpp",
+        ],
+        "intro": [
+            "<code>World : Zone</code> 是<b>第一個 Zone 子類</b>（三層願景的最上層，時間模型"
+            "純回合、tick 分派未動工）。<code>WorldGenParams gen</code> 隨 save_extra/"
+            "load_extra 序列化——存檔即記住生成配方，讀回後可用同一組參數重生成同一張圖。"
+            "<code>generate()</code> 是薄殼：挑 <code>layers[0]</code> 轉呼 "
+            "<code>world_gen::generate(gen, layers[0], id)</code>。",
+            "<code>world_gen</code> 是純函式模組，<b>不認識 World 型別</b>，只認「配方＋一張"
+            "grid」：libtcod 2.2.2 headless 的 FBM 高度圖 → sea_level 切水陸 → 溫/濕度場分"
+            "biome。同 seed 必產同圖（RNG 用 Mersenne Twister 鎖 seed，決定性）；libtcod 依賴"
+            "收在 .cpp 不外洩。",
+        ],
+        "points": [
+            ("World : Zone：第一個子類，只放 worldgen 與世界尺度資料。",
+             0, "struct World : Zone"),
+            ("generate() 薄殼：挑 layers[0] 轉呼 world_gen::generate。",
+             1, "void World::generate()"),
+            ("WorldGenParams：生成配方，全部有預設值、隨存檔序列化。",
+             2, "struct WorldGenParams"),
+            ("world_gen::generate 簽章：純函式，不依賴 World 型別。",
+             2, "void generate(const WorldGenParams& gen"),
+            ("Field：FBM 場，seed 派生錯開（高度/溫度/濕度三張獨立場）。",
+             3, "struct Field"),
+            ("sea_level 切水陸、溫濕度分 biome 的實作。", 3, "TERRAIN_OCEAN"),
+        ],
+        "quiz": "world_gen::generate 為什麼不依賴 World 型別？同一組 WorldGenParams 兩次"
+                "呼叫會得到一樣的地圖嗎？",
+    },
+    {
+        "slug": "06-serialize",
+        "title": "第 6 站 serialize/ — 存讀檔管線",
         "tagline": "registry_io：registry ↔ 位元組；zone_io：完整 Zone 兩塊接合。AllComponents 是唯一登記點。",
+        "tour": "CODE_TOUR.md",
         "files": [
             "projects/medp/src/gcore/serialize/all_components.h",
             "projects/medp/src/gcore/serialize/entt_cereal_archive.h",
@@ -157,20 +265,23 @@ STATIONS = [
         "intro": [
             "分工：<code>registry_io</code> 負責單一 registry ↔ 位元組（EnTT snapshot 遍歷、"
             "cereal PortableBinary 決定位元格式、entt_cereal_archive.h 純膠水橋接）；"
-            "<code>zone_io</code> 負責完整 Zone——第一塊（id/parent/layers）直接 cereal，"
-            "第二塊（reg）走 registry_io，兩塊依序接在同一 stream。",
+            "<code>zone_io</code> 負責完整 Zone——第一塊（kind tag/id/parent/layers/子類 extra）"
+            "直接 cereal，第二塊（reg）走 registry_io，兩塊依序接在同一 stream。",
             "save 與 load 都以 fold expression 展開 <code>AllComponents</code> "
-            "type_list——清單漏了誰，那個 component 就「默默」不存不讀，不會報錯。"
-            "<b>存檔無版本欄位</b>（使用者裁定）：格式一變，舊檔讀出來就是壞資料；"
-            "重寫期直接刪存檔目錄。",
+            "type_list（現存 8 型：Position/Velocity 來自 world，Name/Owner/Location/Unit/"
+            "LocationKind/UnitKind 來自 common）——清單漏了誰，那個 component 就「默默」"
+            "不存不讀，不會報錯。<b>存檔無版本欄位</b>（使用者裁定）：格式一變，舊檔讀出來就是"
+            "壞資料；重寫期直接刪存檔目錄。",
         ],
         "points": [
-            ("AllComponents：新增 component 唯一要登記的地方。", 0, "using AllComponents"),
+            ("AllComponents：新增 component 唯一要登記的地方，現存 8 型。",
+             0, "using AllComponents"),
             ("純膠水：把 entt snapshot 的 callback 簽章轉成 cereal 呼叫，"
              "entt::entity ↔ 底層整數。", 1, "struct output_archive"),
             ("save_impl / load_impl 用 fold expression 展開清單。", 2, "void save_impl"),
             ("陷阱點 orphans()：load 後沒有任何（已登記）component 的 entity 會被清掉。",
              2, "loader.orphans()"),
+            ("kind tag 先讀出才知道要建構哪個子類。", 3, "std::unique_ptr<Zone> load"),
             ("兩塊接合：大括號限制 archive 生存期——cereal 是解構時才把緩衝寫出去的。",
              3, "inline void save(Zone& z"),
         ],
@@ -178,9 +289,10 @@ STATIONS = [
                 "不會報錯？",
     },
     {
-        "slug": "05-zone-manager",
-        "title": "第 5 站 ZoneManager — 總管",
-        "tagline": "把前四站接起來：id 配發、開檔協定、tick、存讀檔與損毀防護。",
+        "slug": "07-zone-manager",
+        "title": "第 7 站 zone/zone_manager.h + .cpp — 總管",
+        "tagline": "把前六站接起來：id 配發（含 kind）、開檔協定、tick、存讀檔與損毀防護。",
+        "tour": "CODE_TOUR.md",
         "files": ["projects/medp/src/gcore/zone/zone_manager.h", "projects/medp/src/gcore/zone/zone_manager.cpp"],
         "intro": [
             "root 永久存活、放全局實體，其餘 zones 按需載入卸載。header 註解寫了三條契約，必讀："
@@ -188,13 +300,15 @@ STATIONS = [
             "<code>Zone*</code> 不跨 tick 持有（想長駐就存 id、每次 get）。",
             "存檔佈局：一 zone 一檔（<code>&lt;16hex&gt;.bin</code>，root 特例 "
             "<code>root.bin</code>）＋ <code>manifest.bin</code>（僅 next_zone_id，"
-            "未來擴充為存檔 metainfo）。",
+            "未來擴充為存檔 metainfo）。<code>create_child</code> 多帶一個 "
+            "<code>ZoneKind kind = Plain</code> 參數，決定建構的子類；拿子類介面用 "
+            "<code>zone_cast&lt;T&gt;</code>（見第 2 站）。",
         ],
         "points": [
             ("開檔協定：有 manifest → 還原 next_id＋必讀回 root.bin（缺失 throw）；"
              "無 manifest 但有 .bin → throw；乾淨目錄 → 新世界。",
              1, "ZoneManager::ZoneManager"),
-            ("create_child：id 單點配發（永不復用），配發即原子寫 manifest；"
+            ("create_child：id 單點配發（永不復用）＋kind 決定子類，配發即原子寫 manifest；"
              "撞既有檔或 parent 未載入 → throw。", 1, "Zone& ZoneManager::create_child"),
             ("destroy：連盤上檔案一起刪（死 zone 不復活）。", 1, "void ZoneManager::destroy"),
             ("manifest 原子寫：先 .tmp 再 rename。", 1, "void ZoneManager::write_manifest"),
@@ -203,34 +317,19 @@ STATIONS = [
             ("tick：每個已載入 zone × 每個 system 依註冊順序；root 也參加。",
              1, "void ZoneManager::tick"),
         ],
-        "quiz": "哪三種磁碟狀態會讓建構子 throw？為什麼 create_child 要在建 zone 前"
-                "先寫 manifest？",
+        "quiz": "哪三種磁碟狀態會讓建構子 throw？create_child 的 kind 參數決定了什麼？",
     },
     {
-        "slug": "06-systems",
-        "title": "第 6 站 systems/movement.h — system 的樣板",
-        "tagline": "所有未來 system 的形狀範本：自由函式、吃 Zone&；位置變更收口於 move_by。",
-        "files": ["projects/medp/src/gcore/systems/movement.h"],
-        "intro": [
-            "26 行示範「system 該長什麼樣」：簽章 <code>void(Zone&)</code> 即 ZoneSystem，"
-            "可直接 <code>zm.add_zone_system(systems::movement)</code> 註冊。",
-            "位置變更一律經 <code>move_by</code> 收口、不直改 Position——"
-            "將來 tile flag 檢查（可走性）、空間索引維護都掛在這個口上。",
-        ],
-        "points": [
-            ("move_by：位置變更的唯一入口。", 0, "inline void move_by"),
-            ("movement：view 遍歷帶 entity，交給 move_by。", 0, "inline void movement"),
-        ],
-        "quiz": "要新增一個 system，需要改 ZoneManager 嗎？（不用——寫自由函式，"
-                "外部 add_zone_system 註冊即可。）",
-    },
-    {
-        "slug": "07-tests",
-        "title": "第 7 站 projects/tests/src/main.cpp — 可執行的規格書",
-        "tagline": "15 個 case，每個 test 就是一段「這功能該怎麼用」的示範。",
+        "slug": "08-tests",
+        "title": "第 8 站 projects/tests/src/main.cpp — 可執行的規格書",
+        "tagline": "21 個 case，每個 test 就是一段「這功能該怎麼用」的示範。",
+        "tour": "CODE_TOUR.md",
         "files": ["projects/tests/src/main.cpp"],
         "intro": [
-            "改任何行為前先看對應 test 的期望。15 個 case 的總表在檔尾 main()。",
+            "改任何行為前先看對應 test 的期望。21 個 case 的總表在檔尾 main()。覆蓋範圍："
+            "序列化 round-trip/orphans、tdarray、zone_io（含未知 kind fail-fast）、"
+            "ZoneManager（開檔協定/配號/持久化/損毀防護）、World（kind round-trip/generate "
+            "決定性/sanity）、movement、actor（def 註冊/spawn/序列化 round-trip）。",
             "跑法：先建 medp 再建 tests，執行 "
             "<code>./projects/tests/build/bin/medp_test.&lt;平台&gt;.&lt;組態&gt;.&lt;位元數&gt;</code>"
             "（詳見 workflows/testing.md）。",
@@ -243,13 +342,20 @@ STATIONS = [
              0, "static bool test_open_protocol_guards()"),
             ("tick_all_zones：明文固定「root 也參加 tick」的語意。",
              0, "static bool test_tick_all_zones()"),
+            ("world_generate_deterministic：同 seed 必產同圖。",
+             0, "static bool test_world_generate_deterministic()"),
+            ("actor_defs_and_spawn：def 註冊＋fail-fast 非 root 檢查＋spawn。",
+             0, "static bool test_actor_defs_and_spawn()"),
+            ("actor_roundtrip：actor 家族 tag 隨存讀檔完整往返。",
+             0, "static bool test_actor_roundtrip()"),
         ],
         "quiz": "哪個 test 保護「死 zone 不復活」這條語意？",
     },
     {
-        "slug": "08-gbind",
+        "slug": "09-gbind",
         "title": "附錄 gbind/ — Godot GDExtension 接線",
         "tagline": "目前只有 smoke-test facade，可略過；動它前讀 projects/archived/gd/。",
+        "tour": "CODE_TOUR.md",
         "files": [
             "projects/medp/src/gbind/medp_core.h",
             "projects/medp/src/gbind/medp_core.cpp",
@@ -272,9 +378,11 @@ STATIONS = [
 
 INVARIANTS = [
     ("多 registry / zone 生命週期",
-     "一個 zone = 一個 <code>Zone</code>（registry＋自帶多層地圖），由 ZoneManager 管理；"
-     "root 永久存活、放全局實體，其餘 zones 按需載入/卸載。zone id 是零語意單調序號、"
-     "由 create_child 單點配發，磁碟 path 由 id 推導、不另存全域 zone 清單。"),
+     "一個 zone = 一個 <code>Zone</code>（繼承基底，registry＋自帶多層地圖），由 ZoneManager "
+     "管理；root 永久存活、放全局實體，其餘 zones 按需載入/卸載。zone id 是零語意單調序號、"
+     "由 create_child 單點配發，磁碟 path 由 id 推導、不另存全域 zone 清單。<code>World</code> "
+     "是目前唯一子類，經 <code>ZoneKind</code> tag／<code>make_zone</code>／<code>zone_cast&lt;T&gt;</code> "
+     "分派。"),
     ("序列化",
      "EnTT snapshot 遍歷 registry，cereal PortableBinaryArchive 負責位元格式，透過 "
      "entt_cereal_archive.h 橋接。component 型別清單的單一來源是 all_components.h 的 "
@@ -283,6 +391,10 @@ INVARIANTS = [
      "component 盡量是 POD aggregate；entity 之間的參照存 <code>entt::entity</code>。"
      "system 寫成吃 <code>Zone&amp;</code> 的自由函式；位置變更一律收口於 "
      "<code>systems::move_by</code>。"),
+    ("actor＝組合而非繼承",
+     "地點/部隊的共同基底不是 C++ 父類，是共用元件（Name＋Owner＋Location{kind}／Unit{kind}）。"
+     "種類是資料驅動 def（住在 root 的實體），actor 以穩定 <code>uint64_t</code> id 參照，"
+     "跨 registry 安全。"),
 ]
 
 
@@ -302,8 +414,9 @@ def page(title: str, body: str, css_prefix: str = "") -> str:
 <body>
 {body}
 <footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
- <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_MAP.md">CODE_MAP.md</a>；
-程式碼更新後重跑 <code>python3 build.py</code> 即同步。</footer>
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>／
+<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python build.py</code> 即同步。</footer>
 </body>
 </html>
 """
@@ -375,11 +488,12 @@ def build_station(idx: int) -> tuple[str, int]:
     quiz_html = (f'<div class="quiz"><b>讀完該能回答：</b>{st["quiz"]}</div>'
                  if st["quiz"] else "")
 
+    tour_file = st.get("tour", "CODE_TOUR.md")
     body = f"""
 <nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
 <h1>{html.escape(st["title"])}</h1>
 <p class="meta">{len(st["files"])} 個檔案，共 {total} 行 ·
- 對照 <a href="../CODE_TOUR.md">CODE_TOUR.md</a></p>
+ 對照 <a href="../{tour_file}">{tour_file}</a></p>
 {''.join(f'<p>{p}</p>' for p in st["intro"])}
 <h2>看什麼</h2>
 <ul class="points">
@@ -406,29 +520,31 @@ def build_index(station_lines: dict[str, int]) -> None:
 
     inv = "".join(f"<li><b>{t}</b>——{d}</li>" for t, d in INVARIANTS)
 
+    total_lines = sum(station_lines.values())
     body = f"""
 <h1>medps 程式碼導覽</h1>
-<p class="meta">奇幻 4X 策略遊戲 C++20 後端（EnTT + cereal）· 核心約 1,100 行 ·
-照順序讀完約 1 小時</p>
+<p class="meta">奇幻 4X 策略遊戲 C++20 後端（EnTT + cereal）· 核心約 {total_lines:,} 行 ·
+照順序讀完約 1.5 小時</p>
 
 <div class="hero">
 <b>全貌一句話：</b><code>ZoneManager</code> 管一堆 <code>Zone</code>
-（一個 zone = 一個 <code>entt::registry</code> + 自帶多層 tile 地圖），zone id 是零語意的
-單調序號、由 <code>create_child</code> 配發；存讀檔 = 一 zone 一檔（zone_io 兩塊接合）＋
-<code>manifest.bin</code> 記 id 計數器；<code>tick()</code> 對每個已載入 zone（含 root）
-跑所有註冊的 system。
+（繼承基底，<code>World</code> 是第一個子類；一個 zone = 一個 <code>entt::registry</code> +
+自帶多層 tile 地圖），zone id 是零語意的單調序號、由 <code>create_child</code> 配發；
+存讀檔 = 一 zone 一檔（zone_io 兩塊接合，kind tag 決定子類）＋<code>manifest.bin</code>
+記 id 計數器；<code>tick()</code> 對每個已載入 zone（含 root）跑所有註冊的 system。
+actor（地點/部隊）是 ECS 組合而非 C++ 繼承。
 </div>
 
 <h2>資料流</h2>
 <div class="flow">
-  <div class="box">components/<br><span class="dim">POD 資料</span></div>
+  <div class="box">common/ + world/components<br><span class="dim">POD 資料</span></div>
   <div class="arrow">掛在</div>
-  <div class="box">Zone<br><span class="dim">registry + layers</span></div>
+  <div class="box">Zone / World<br><span class="dim">registry + layers</span></div>
   <div class="arrow">管理</div>
   <div class="box">ZoneManager<br><span class="dim">root + 配號 + tick</span></div>
 </div>
 <div class="flow">
-  <div class="box">zone_io<br><span class="dim">Zone ↔ 位元組（兩塊）</span></div>
+  <div class="box">zone_io<br><span class="dim">Zone ↔ 位元組（兩塊，kind tag 決定子類）</span></div>
   <div class="arrow">→</div>
   <div class="box">dir/&lt;16hex&gt;.bin<br><span class="dim">一 zone 一檔</span></div>
   <div class="arrow">＋</div>
@@ -447,7 +563,8 @@ def build_index(station_lines: dict[str, int]) -> None:
 
 <h2>真相層連結</h2>
 <ul class="points">
-  <li><a href="../CODE_TOUR.md">CODE_TOUR.md</a>——線性導讀（本導覽的 Markdown 真相層）</li>
+  <li><a href="../CODE_TOUR.md">CODE_TOUR.md</a>——線性導讀上冊（本導覽的 Markdown 真相層）</li>
+  <li><a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>——線性導讀下冊（World 子類與 actor 身分層）</li>
   <li><a href="../CODE_MAP.md">CODE_MAP.md</a>——agent 修改前的查表</li>
   <li><a href="{REL_TO_ROOT}/AGENTS.md">AGENTS.md</a>——專案備忘與鐵律</li>
   <li><a href="{REL_TO_ROOT}/docs/work/progress_overview.md">docs/work/progress_overview.md</a>——進度總覽</li>

@@ -1,177 +1,100 @@
 # Zone / Registry 架構教學
 
-> 本文說明 medps 的多 registry / zone 架構：`GlobalManager`、`ZoneKey`、path 推導、per-zone system、整局存讀。
-> 對應程式碼：`projects/medp/src/gcore/global_manager.{h,cpp}`、`projects/medp/src/gcore/zone_key.h`、`projects/medp/src/gcore/components/`、`projects/medp/src/gcore/serialize/`。
+> 本文回答「**為什麼**是這個架構」，不是逐檔地圖、不是線性導讀、也不是操作步驟——那三份見下。
+> 對應程式碼：`projects/medp/src/gcore/zone/`、`projects/medp/src/gcore/serialize/`、
+> `projects/medp/src/gcore/common/`。
 
----
+## 這份文件跟其他三份怎麼分工
 
-## 0. 核心概念
+| 文件 | 回答什麼 | 不重複的邊界 |
+|---|---|---|
+| 本文 | 為什麼是這個架構——動機、取捨、代價 | 不列檔案清單、不逐行導讀、不寫操作步驟 |
+| [gcore_overview.md](../work/architecture/gcore_overview.md) | 每個檔案做什麼、彼此怎麼接 | 逐檔地圖，本文不重複檔案清單 |
+| [CODE_TOUR.md](../../workflows/common/code-map/CODE_TOUR.md) | 照順序讀原始碼的路徑 | 帶行號的閱讀站點，本文不重複站點內容 |
+| [how_to_add_component_and_system.md](how_to_add_component_and_system.md) | 新增 component/system 的實際步驟 | 操作 SOP，本文只講「為什麼這樣設計」 |
 
-整個遊戲世界被切成多個 **zone**，每個 zone 是一個獨立的 `entt::registry`：
+想知道某個檔案在哪、怎麼讀、怎麼動手，去上面三份；想知道「這個設計是為了解決什麼問題」，留在本文與兩份子文件。
 
-```
-GlobalManager
-├── root  (entt::registry)          ← ZONE_ROOT，永久存活，全局實體住這
-└── loaded zones (按需)              ← unordered_map<ZoneKey, unique_ptr<registry>>
-    ├── World  (0,0,0)
-    ├── Region (1,0,0)
-    └── Area   (15,0,0)
-```
+## 0. 核心概念一句話
 
-- **root**：永遠載入。faction、文明、神祇等跨 zone 的全局實體放這裡。
-- **zone**：World / Region / Area 等地圖層，**只在需要時 `load()`，用完 `unload()`**，其餘留在磁碟。
+世界被切成多個 **zone**，每個 zone 自帶一個獨立的 `entt::registry`（實體）＋自己的多層
+tile 地圖（`layers`）。`ZoneManager` 持有目前記憶體中的所有 zone、對它們跑 system、
+負責存讀磁碟。root（id 固定為 0）永久存活、放非地圖的全局實體；其餘 zone 按需
+`load()`/`unload()`。
 
----
-
-## 1. ZoneKey：zone 的唯一識別 + 定址
-
-`ZoneKey` 是一個 `uint64_t`，把「層級型別 + 全局座標」打包進去：
-
-```
-bits 63-48 : ZoneType (16)  — 層級/種類（World / Region / Area）
-bits 47-32 : x (16, signed) — 全局座標
-bits 31-16 : y (16, signed)
-bits 15-0  : z (16, signed) — 垂直層（Underground −1 / Ground 0 / Sky +1）
-```
-
-```cpp
-ZoneKey k = make_zone_key(ZoneType::Region, 3, 4, 0);
-zone_key_type(k);  // ZoneType::Region
-zone_key_x(k);     // 3
+```mermaid
+flowchart LR
+    subgraph Mem["記憶體（ZoneManager::zones_）"]
+        Root["root（id=0，永駐）<br/>陣營 / 神祇 / 具名角色 / 種類 def"]
+        Z1["Zone A（World）"]
+        Z2["Zone B（Plain）"]
+    end
+    Disk[("存檔目錄<br/>各 zone 一檔（id 的 16 碼 hex）+ manifest.bin")]
+    Root <-->|save_all / 常駐| Disk
+    Z1 <-->|load / unload| Disk
+    Z2 <-->|load / unload| Disk
 ```
 
-`ZoneType` 同時代表階層深度（`World ⊃ Region ⊃ Area`），所以父層型別是隱含的：
+## 1. 為什麼一 zone 一 registry
 
-```cpp
-parent_of(area_key);    // → 對應的 Region key
-parent_of(region_key);  // → 對應的 World key
-parent_of(world_key);   // → ZONE_ROOT
-```
+把整個世界塞進一個 `entt::registry` 沒問題，但 zone 是本專案的記憶體單位也是存檔單位：
+玩家在哪、遊戲就該把哪塊地圖＋entity 留在記憶體，其餘寫回磁碟。用「一 zone 一
+registry」把這兩件事天然綁在一起——`unload` 一個 zone 就是序列化那個 registry 再釋放它，
+不需要在單一巨大 registry 裡篩選「哪些 entity 屬於這個區域」。
 
-- **全局座標**：一個 ZoneKey 就能唯一定址任何 zone，不需要路徑。
-- **`ZONE_ROOT == 0`**：root 的保留值。`ZoneType::Invalid = 0` 也被保留以免撞值（真正的 type 從 1 開始）。
-- 建構輔助：`world_key(z)`、`region_key(world_x, world_y, z)`、`area_key(world_x, world_y, region_local_x, region_local_y, z)`。
+代價是跨 zone 的引用不能再用 `entt::entity`、而且地圖本身（`Zone::layers`）刻意不走
+ECS——它是 zone 的固有結構，不是某個 entity 的屬性，於是 registry 的 snapshot 天然碰
+不到它，存檔要分兩塊處理（`zone_io`）。這兩點的細節見
+[定址與身分篇](zone_streaming_architecture_addressing.md)。
 
-尺度常數集中在 `zone_scale`（`zone_key.h`）：`WORLD_DIM_DEFAULT=200`、`WORLD_LAYERS_DEFAULT=3`、`REGION_DIM=15`、`AREA_DIM=250`，以及 `valid_world_dim()` 檢查。
+## 2. 定址與身分（詳見子文件）
 
----
+zone id 是裸 `uint64_t` 單調序號、零座標語意，parent 是 `Zone` 上的顯式欄位——這是
+相對舊架構最大的翻轉：舊路數把型別/座標打包進一個 key、用整除回推 parent，代價是
+改一個尺度就要重編全部 id。身分（id/parent/kind）直接掛在 `Zone` struct 上，不靠
+registry 裡的 placeholder entity 攜帶，因此不必保證「registry 裡永遠有活著的
+entity」。跨 registry 的引用（zone 之間、actor 的陣營/種類）一律存穩定的
+`uint64_t` id，不存 `entt::entity`——因為 `entt::entity` 離開建立它的 registry
+就沒有意義。
 
-## 2. path 用 ZoneKey 推導，不存清單
+完整推演、程式碼引用、對照表見
+**[zone_streaming_architecture_addressing.md](zone_streaming_architecture_addressing.md)**。
 
-zone 的磁碟路徑由 key **算出來**，不維護任何全域清單。預設後端 `FolderZoneStore`（`serialize/zone_store.h`）一個 zone 一個檔案：
+## 3. streaming 與序列化契約（詳見子文件）
 
-```cpp
-// dir_/<16 碼 hex key>.bin；ZONE_ROOT 特例為 dir_/root.bin
-store.path(key);   // → dir_/0002000300040000.bin 之類
-```
+`ZoneManager` 用 `unordered_map<ZoneId, unique_ptr<Zone>>` 持有 zone，因為對外發出的
+`Zone*`/`Zone&` 位址必須在 `unordered_map` rehash 之後仍然穩定。存檔目錄是「單槽活
+儲存」：目錄即世界的權威狀態，`unload` 隨時寫檔、`save_all` 是檢查點而非槽位快照，
+各 zone 可能凍結於不同遊戲時刻——這是刻意接受的語意。開檔走 fail-fast 協定，寧可
+throw 也不猜。兩條硬約定：`Zone*`/`Zone&` 不得跨 tick 持有；system 內禁止 zone
+結構性變更（tick 重入禁令）。
 
-**為什麼**：若把 `map<ZoneKey, path>` 存進記憶體，zone 一多清單本身就佔住記憶體。改成推導後：
+序列化這邊：`AllComponents` 是唯一登記清單，漏登記會讓存檔默默漏掉該 component；
+`loader.orphans()` 會清掉沒有任何已登記 component 的 entity；存檔**沒有版本欄位**，
+格式一變舊檔就是壞資料且不一定顯式報錯。
 
-- 「某 zone 存不存在？」→ `store.has(key)` 檢查檔案是否存在
-- `GlobalManager` 不持有任何持久化清單，記憶體**只跟當前載入的 zone 數成正比**
+完整推演、程式碼引用、時序圖見
+**[zone_streaming_architecture_lifecycle.md](zone_streaming_architecture_lifecycle.md)**。
 
-`ZoneStore` 是抽象後端（`write/read/has/flush`），把 GlobalManager 與「存放位置」解耦；`FolderZoneStore` 是目前唯一且預設的實作。`zone_io`（`serialize/zone_io.h`）負責 registry⟷位元組，`ZoneStore` 負責位元組⟷儲存。
+## 4. 現況與目前不做什麼
 
----
+測試基準 **21 項全綠**；`World : Zone`（`projects/medp/src/gcore/world/world.h:8`）是
+目前唯一子類；`projects/game/` 是第一個真實 consumer。
 
-## 3. 每個 zone 的 placeholder：ZoneMeta
-
-每個 zone 至少有一個帶 `ZoneMeta` 的 entity（由 `create` 自動建立）：
-
-```cpp
-struct ZoneMeta {
-    ZoneKey self;     // 這個 zone 是誰
-    ZoneKey parent;   // 直屬父 zone；ZONE_ROOT = 掛在 root 下
-};
-```
-
-兩個作用：
-1. **存活保證**：序列化用 `snapshot_loader::orphans()` 會刪掉「沒有任何 component」的 entity。placeholder 帶著 `ZoneMeta`，確保即使空 zone 也不會被清空。
-2. **身份**：載入後 registry 知道自己是哪個 zone、父 zone 是誰。
-
-> CONVENTION：任何新建的 zone 都必須有這個 placeholder。用 `GlobalManager::create` 就會自動處理。
-
----
-
-## 4. per-save 世界設定：WorldConfig（ROOT singleton）
-
-世界尺寸是每份存檔的執行期設定，以 singleton component `WorldConfig` 掛在 root 上，跟著 root 走正常 snapshot/cereal 存檔路徑（不需另外的 meta 檔）：
-
-```cpp
-struct WorldConfig {
-    int16_t world_dim_x;   // 世界地圖 = x × y 個 world-tile
-    int16_t world_dim_y;
-    int16_t world_dim_z;   // 垂直層數，預設 3（Underground/Ground/Sky）
-};
-
-gm.init_world(/*x=*/200, /*y=*/200, /*z=*/3);  // 新遊戲，冪等；覆寫既有 singleton
-auto cfg = gm.world_config();                  // 目前生效設定（未設定時為預設建構值）
-```
-
-`world_dim` 在世界生成時決定，且在該存檔的整個生命週期內 **IMMUTABLE**——它已被烘進 ZoneKey 的座標語意，中途更動會讓所有既有 key 失效。前置條件：x、y 須滿足 `zone_scale::valid_world_dim`。
-
----
-
-## 5. per-zone system 與 tick
-
-system 寫成吃 `entt::registry&` 的自由函式，向 `GlobalManager` 註冊；`tick()` 對**每個已載入的 zone** 依註冊順序跑所有 system：
-
-```cpp
-using ZoneSystem = std::function<void(entt::registry&)>;
-
-gm.add_zone_system(movement_system);
-gm.tick();   // 對每個已載入 zone 跑所有 system；root 被排除
-```
-
-> root 不參與 tick——它存放全局 entity，而非地圖角色。
-
----
-
-## 6. 整局遊戲的存讀
-
-| 操作 | 說明 |
-|---|---|
-| `gm.create(key, parent)` | 新建 zone（自動放 ZoneMeta placeholder） |
-| `gm.get(key)` | 取得已載入 zone 的 registry；未載入回傳 `nullptr` |
-| `gm.load(key)` | 從推導路徑載入既有 zone；已載入則回傳既有者 |
-| `gm.unload(key)` | 序列化寫回 store 並從記憶體移除 |
-| `gm.save_all()` | **存檔點**：寫 root + 所有當前載入的 zone（不卸載） |
-| `gm.load_root()` | **開遊戲**：只載入 root，子 zone 之後按需 `load()` |
-
-典型流程：
-
-```cpp
-// 開新遊戲
-GlobalManager gm;                              // 預設 FolderZoneStore("zones")
-// 或注入自訂後端：GlobalManager gm{std::make_unique<FolderZoneStore>("save_001")};
-gm.init_world(200, 200, 3);                    // 設定世界尺寸
-// ... 建立 root 內容、建立初始 zone ...
-gm.save_all();                                 // 存檔
-
-// 重開遊戲
-GlobalManager gm2{std::make_unique<FolderZoneStore>("save_001")};
-gm2.load_root();                               // 只載 root
-auto& region = gm2.load(some_region_key);      // 玩家移動到此處才載入
-gm2.unload(some_region_key);                   // 離開時卸載
-```
-
----
-
-## 7. 設計要點回顧
-
-- **一個 zone = 一個 registry，root 永久 + zone 按需** → 全局實體集中於 root，世界其餘部分按需 `load()/unload()`。
-- **ZoneKey 全局定址，path 推導不存清單** → 記憶體只跟載入數成正比。
-- **每 zone 一個 ZoneMeta placeholder** → 保證存活、攜帶身份。
-- **WorldConfig 為 ROOT singleton，跟著 root 一起存** → 不需獨立 meta 檔，世界尺寸 immutable。
-- **per-zone system + tick** → system 是吃 `entt::registry&` 的自由函式，root 不參與 tick。
-
----
+以下設計刻意 **defer**、且尚未凍結：目錄分桶、persistence 兩態
+（Ephemeral/Persistent）、LRU 卸載（含「清掉很久沒訪問且不重要的 zone `.bin`」這類
+需求）、parent→children 連結、跨 zone 實體引用機制、返回座標、Portal。看到這些概念
+在教學裡沒有著墨不是遺漏，是還沒設計。
 
 ## 參考
 
-- 序列化機制（snapshot + cereal）：`docs/references/entt_tutorial.md` §7、`docs/references/cereal_tutorial.md`
-- 新增 component / system：`docs/references/how_to_add_component_and_system.md`
-- 程式碼：`projects/medp/src/gcore/global_manager.{h,cpp}`、`projects/medp/src/gcore/zone_key.h`、`projects/medp/src/gcore/serialize/`、`projects/medp/src/gcore/components/`
+- 定址與身分深入：[zone_streaming_architecture_addressing.md](zone_streaming_architecture_addressing.md)
+- streaming 生命週期與序列化契約深入：[zone_streaming_architecture_lifecycle.md](zone_streaming_architecture_lifecycle.md)
+- 逐檔地圖：[gcore_overview.md](../work/architecture/gcore_overview.md)、
+  [gcore_overview_zone_serialize.md](../work/architecture/gcore_overview_zone_serialize.md)
+- 線性導讀：[CODE_TOUR.md](../../workflows/common/code-map/CODE_TOUR.md)
+- 新增 component/system 操作步驟：[how_to_add_component_and_system.md](how_to_add_component_and_system.md)
+- EnTT / cereal 基礎教學：[entt_tutorial.md](entt_tutorial.md)、[cereal_tutorial.md](cereal_tutorial.md)
+- 原始碼：`projects/medp/src/gcore/zone/zone.h`、`zone_manager.h`/`.cpp`、
+  `projects/medp/src/gcore/serialize/`、`projects/medp/src/gcore/common/`
 - 測試：`projects/tests/src/main.cpp`
-</content>
-</invoke>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 站 common/ — actor 身分層</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+
+<nav class="crumb"><a href="index.html">← 回導覽索引</a></nav>
+<h1>第 3 站 common/ — actor 身分層</h1>
+<p class="meta">5 個檔案，共 172 行 ·
+ 對照 <a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a></p>
+<p><code>common/</code> 是「可用於多數 Zone 子類的組件」。actor（地點/部隊的共同基底）在 ECS 裡<b>不是 C++ 父類，是一組共用元件</b>：身分＝Name＋Owner；家族＝Location{kind} 或 Unit{kind}（互斥，一個 actor 只屬一族）；放置＝Position（world/components/，見第 4 站）——刻意與身分分離，spawn 不掛。</p><p>種類（kind）不是 enum，是<b>資料驅動的 def</b>：LocationKind{id}/UnitKind{id}＋Name掛在 <b>root</b> 的定義實體上；actor 以穩定 <code>uint64_t</code> id 參照 def（跨 registry 安全，比照 zone id / Owner.faction）。要新增種類＝多建一個 def 實體，不改任何 enum。</p>
+<h2>看什麼</h2>
+<ul class="points">
+<li>Name{value}：actor 顯示名，兩大家族共用。 <a class="loc" href="#projects-medp-src-gcore-common-components-name-h-L7">name.h:7</a></li><li>Owner{faction}：陣營穩定 id，0=無主/中立。 <a class="loc" href="#projects-medp-src-gcore-common-components-owner-h-L8">owner.h:8</a></li><li>LocationKind{id}：地點種類 def，掛在 root。 <a class="loc" href="#projects-medp-src-gcore-common-components-location-h-L12">location.h:12</a></li><li>Location{kind}：地點 actor 的家族 tag，kind 參照 def id。 <a class="loc" href="#projects-medp-src-gcore-common-components-location-h-L23">location.h:23</a></li><li>UnitKind{id}：部隊種類 def，掛在 root。 <a class="loc" href="#projects-medp-src-gcore-common-components-unit-h-L10">unit.h:10</a></li><li>Unit{kind}：部隊 actor 的家族 tag。 <a class="loc" href="#projects-medp-src-gcore-common-components-unit-h-L21">unit.h:21</a></li><li>require_root：fail-fast 檢查 def 只能掛在 root，否則 throw。 <a class="loc" href="#projects-medp-src-gcore-common-actor-h-L32">actor.h:32</a></li><li>define_location/define_unit：在 root 建種類 def。 <a class="loc" href="#projects-medp-src-gcore-common-actor-h-L40">actor.h:40</a></li><li>find_location_def：依 id 在 root 線性掃找 def，找不到回 entt::null。 <a class="loc" href="#projects-medp-src-gcore-common-actor-h-L59">actor.h:59</a></li><li>spawn_location/spawn_unit：在某 zone 建 actor（Name+Owner+家族 tag）。 <a class="loc" href="#projects-medp-src-gcore-common-actor-h-L74">actor.h:74</a></li>
+</ul>
+<div class="quiz"><b>讀完該能回答：</b>actor 的「基底」在這個 codebase 裡是什麼形式？為什麼 kind 用 def 實體而不是 enum？</div>
+
+<section class="file" id="projects-medp-src-gcore-common-components-name-h">
+  <h3><code>projects/medp/src/gcore/common/components/name.h</code> <span class="dim">（12 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/common/components/name.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L1"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L2"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;string&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L3"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L3">3</a><span class="src"><span class="pp">#include</span> &lt;cereal/types/string.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L4"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L4">4</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L5"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L5">5</a><span class="src"><span class="cm">// actor 的顯示名稱。任何被玩家指涉的實體（地點、部隊、將來的將領/神祇…）都可掛。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L6"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L6">6</a><span class="src"><span class="cm">// 空字串＝匿名或程序生成尚未命名。actor 兩大家族（Location / Unit）共用的身分元件之一。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L7"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L7">7</a><span class="src"><span class="kw">struct</span> Name {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L8"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L8">8</a><span class="src">    std::string value;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L9"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L9">9</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L10"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L10">10</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L11"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L11">11</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(value); }</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-name-h-L12"><a class="no" href="#projects-medp-src-gcore-common-components-name-h-L12">12</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-common-components-owner-h">
+  <h3><code>projects/medp/src/gcore/common/components/owner.h</code> <span class="dim">（13 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/common/components/owner.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L1"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L2"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L3"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L3">3</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L4"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L4">4</a><span class="src"><span class="cm">// actor 的陣營歸屬。存的是穩定的 faction id，不是 entt handle——</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L5"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L5">5</a><span class="src"><span class="cm">// faction 實體屬 root（見 zone.h：root 放陣營/神祇/具名角色），跨 registry</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L6"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L6">6</a><span class="src"><span class="cm">// 不能持有對方的 entt::entity，故以零語意 uint64 id 參照（比照 zone id 的做法）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L7"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L7">7</a><span class="src"><span class="cm">// 0 = 無主/中立（未歸屬的遺跡、流民、蠻族據點…）。actor 兩大家族共用的身分元件之一。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L8"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L8">8</a><span class="src"><span class="kw">struct</span> Owner {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L9"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L9">9</a><span class="src">    <span class="kw">uint64_t</span> faction = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L10"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L10">10</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L11"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L11">11</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L12"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L12">12</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(faction); }</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-owner-h-L13"><a class="no" href="#projects-medp-src-gcore-common-components-owner-h-L13">13</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-common-components-location-h">
+  <h3><code>projects/medp/src/gcore/common/components/location.h</code> <span class="dim">（28 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/common/components/location.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L1"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L2"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L3"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L3">3</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L4"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L4">4</a><span class="src"><span class="cm">// 地點種類的「定義」（def）。掛在 root zone 的實體上——root 本就放全局實體</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L5"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L5">5</a><span class="src"><span class="cm">//（陣營/神祇/具名角色，見 zone.h），再加上「規則定義」這一類。一個帶</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L6"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L6">6</a><span class="src"><span class="cm">// LocationKind 的實體＝一種地點的 def。種類是**開放集合、資料驅動**，不是寫死的</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L7"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L7">7</a><span class="src"><span class="cm">// enum：要新增種類就多建一個 def 實體（將來由 Ruleset 載入）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L8"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L8">8</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L9"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L9">9</a><span class="src"><span class="cm">// def 的顯示名走 Name 元件（&quot;城市&quot;/&quot;城堡&quot;…）；玩法欄位（防禦、產出…）日後長在這。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L10"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L10">10</a><span class="src"><span class="cm">// id＝零語意穩定序號，供跨 registry 的 actor 參照（比照 zone id / Owner.faction）；</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L11"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L11">11</a><span class="src"><span class="cm">// 現階段手動配發，將來由 Ruleset/def 登錄機制發號（比照 ZoneManager 配 zone id）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L12"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L12">12</a><span class="src"><span class="kw">struct</span> LocationKind {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L13"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L13">13</a><span class="src">    <span class="kw">uint64_t</span> id = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L14"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L14">14</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L15"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L15">15</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L16"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L16">16</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(id); }</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L17"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L17">17</a><span class="src">};</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L18"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L18">18</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L19"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L19">19</a><span class="src"><span class="cm">// 「地點基類」的 ECS 對應：actor（住在某個 zone 內）帶此 tag 即為地點 actor，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L20"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L20">20</a><span class="src"><span class="cm">// 與部隊（Unit）並列為 actor 兩大家族。地點固定不動，故不配 Velocity；</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L21"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L21">21</a><span class="src"><span class="cm">// 佔一格地圖（Position 由放置流程另掛）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L22"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L22">22</a><span class="src"><span class="cm">// kind＝它所屬 LocationKind def 的穩定 id（def 實體住在 root）；0＝未指定。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L23"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L23">23</a><span class="src"><span class="kw">struct</span> Location {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L24"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L24">24</a><span class="src">    <span class="kw">uint64_t</span> kind = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L25"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L25">25</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L26"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L26">26</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L27"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L27">27</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(kind); }</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-location-h-L28"><a class="no" href="#projects-medp-src-gcore-common-components-location-h-L28">28</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-common-components-unit-h">
+  <h3><code>projects/medp/src/gcore/common/components/unit.h</code> <span class="dim">（26 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/common/components/unit.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L1"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L2"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;cstdint&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L3"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L3">3</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L4"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L4">4</a><span class="src"><span class="cm">// 部隊種類的「定義」（def）。掛在 root zone 的實體上（root 放全局實體＋規則定義，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L5"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L5">5</a><span class="src"><span class="cm">// 見 zone.h）。一個帶 UnitKind 的實體＝一種部隊的 def。種類是**開放集合、資料驅動**，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L6"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L6">6</a><span class="src"><span class="cm">// 不是寫死的 enum：要新增種類就多建一個 def 實體（將來由 Ruleset 載入）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L7"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L7">7</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L8"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L8">8</a><span class="src"><span class="cm">// def 的顯示名走 Name 元件（&quot;軍隊&quot;/&quot;開拓者&quot;…）；玩法欄位（移動力、戰力…）日後長在這。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L9"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L9">9</a><span class="src"><span class="cm">// id＝零語意穩定序號，供跨 registry 的 actor 參照（比照 zone id / Owner.faction）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L10"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L10">10</a><span class="src"><span class="kw">struct</span> UnitKind {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L11"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L11">11</a><span class="src">    <span class="kw">uint64_t</span> id = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L12"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L12">12</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L13"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L13">13</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L14"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L14">14</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(id); }</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L15"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L15">15</a><span class="src">};</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L16"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L16">16</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L17"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L17">17</a><span class="src"><span class="cm">// 「部隊基類」的 ECS 對應：actor（住在某個 zone 內）帶此 tag 即為部隊 actor，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L18"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L18">18</a><span class="src"><span class="cm">// 與地點（Location）並列為 actor 兩大家族。部隊會動，故通常另配 Velocity/移動點</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L19"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L19">19</a><span class="src"><span class="cm">//（移動模型待細修）；佔一格地圖（Position）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L20"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L20">20</a><span class="src"><span class="cm">// kind＝它所屬 UnitKind def 的穩定 id（def 實體住在 root）；0＝未指定。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L21"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L21">21</a><span class="src"><span class="kw">struct</span> Unit {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L22"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L22">22</a><span class="src">    <span class="kw">uint64_t</span> kind = <span class="nu">0</span>;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L23"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L23">23</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L24"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L24">24</a><span class="src">    <span class="kw">template</span> &lt;<span class="kw">class</span> Archive&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L25"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L25">25</a><span class="src">    <span class="kw">void</span> serialize(Archive&amp; ar) { ar(kind); }</span></div>
+<div class="line" id="projects-medp-src-gcore-common-components-unit-h-L26"><a class="no" href="#projects-medp-src-gcore-common-components-unit-h-L26">26</a><span class="src">};</span></div>
+  </div>
+</section>
+<section class="file" id="projects-medp-src-gcore-common-actor-h">
+  <h3><code>projects/medp/src/gcore/common/actor.h</code> <span class="dim">（93 行）</span>
+      <a class="loc" href="../../../../projects/medp/src/gcore/common/actor.h">開啟原始檔</a></h3>
+  <div class="code">
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L1"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L1">1</a><span class="src"><span class="pp">#pragma</span> once</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L2"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L2">2</a><span class="src"><span class="pp">#include</span> &lt;stdexcept&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L3"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L3">3</a><span class="src"><span class="pp">#include</span> &lt;string&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L4"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L4">4</a><span class="src"><span class="pp">#include</span> &lt;utility&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L5"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L5">5</a><span class="src"><span class="pp">#include</span> &lt;entt.hpp&gt;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L6"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L6">6</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;../zone/zone.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L7"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L7">7</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;components/name.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L8"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L8">8</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;components/owner.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L9"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L9">9</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;components/location.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L10"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L10">10</a><span class="src"><span class="pp">#include</span> <span class="st">&quot;components/unit.h&quot;</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L11"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L11">11</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L12"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L12">12</a><span class="src"><span class="cm">// actor 與其種類定義（def）的工廠。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L13"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L13">13</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L14"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L14">14</a><span class="src"><span class="cm">// actor＝「有身分、被玩家指涉、擺在世界裡」的實體，是地點（Location）與部隊（Unit）</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L15"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L15">15</a><span class="src"><span class="cm">// 兩大家族的共同基底。在 ECS 裡「基底」不是 C++ 父類，而是一組共用元件：</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L16"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L16">16</a><span class="src"><span class="cm">//   身分  = Name ＋ Owner</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L17"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L17">17</a><span class="src"><span class="cm">//   放置  = Position（由放置流程另掛，刻意與身分分離——見 world/components/position.h）</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L18"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L18">18</a><span class="src"><span class="cm">//   家族  = Location{kind} 或 Unit{kind}（互斥，一個 actor 只屬一族）</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L19"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L19">19</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L20"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L20">20</a><span class="src"><span class="cm">// 種類（kind）不是寫死的 enum，而是**資料驅動的 def**：def 是住在 root 的實體</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L21"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L21">21</a><span class="src"><span class="cm">//（LocationKind{id}／UnitKind{id} ＋ Name），actor 以穩定 id 參照它（跨 registry</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L22"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L22">22</a><span class="src"><span class="cm">// 安全，比照 zone id / Owner.faction）。要新增一種地點/部隊＝多建一個 def 實體，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L23"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L23">23</a><span class="src"><span class="cm">// 不改任何 enum；將來 Ruleset 落地時 def 由檔案載入、id 由登錄機制發號。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L24"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L24">24</a><span class="src"><span class="kw">namespace</span> actor {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L25"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L25">25</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L26"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L26">26</a><span class="src"><span class="cm">// ---- 定義（一律建在 root zone）----</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L27"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L27">27</a><span class="src"><span class="cm">//</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L28"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L28">28</a><span class="src"><span class="cm">// def 類型一定掛在 root（root 放全局實體＋規則定義）。define_* 吃 Zone&amp; 並</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L29"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L29">29</a><span class="src"><span class="cm">// fail-fast 檢查——傳非 root 進來＝呼叫端邏輯錯，直接 throw、不靜默寫到別的 zone。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L30"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L30">30</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L31"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L31">31</a><span class="src"><span class="kw">namespace</span> detail {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L32"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L32">32</a><span class="src"><span class="kw">inline</span> <span class="kw">void</span> require_root(<span class="kw">const</span> Zone&amp; z, <span class="kw">const</span> <span class="kw">char</span>* who) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L33"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L33">33</a><span class="src">    <span class="kw">if</span> (z.id != ZONE_ROOT)</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L34"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L34">34</a><span class="src">        <span class="kw">throw</span> std::runtime_error(</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L35"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L35">35</a><span class="src">            std::string(who) + <span class="st">&quot;: def 只能掛在 root zone，收到 zone id=&quot;</span> + std::to_string(z.id));</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L36"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L36">36</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L37"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L37">37</a><span class="src">}  <span class="cm">// namespace detail</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L38"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L38">38</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L39"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L39">39</a><span class="src"><span class="cm">// 定義一種地點：LocationKind{id}＋Name{name}。回傳 def 實體。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L40"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L40">40</a><span class="src"><span class="kw">inline</span> entt::entity define_location(Zone&amp; root, <span class="kw">uint64_t</span> id, std::string name) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L41"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L41">41</a><span class="src">    detail::require_root(root, <span class="st">&quot;actor::define_location&quot;</span>);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L42"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L42">42</a><span class="src">    <span class="kw">auto</span> e = root.reg.create();</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L43"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L43">43</a><span class="src">    root.reg.emplace&lt;LocationKind&gt;(e, id);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L44"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L44">44</a><span class="src">    root.reg.emplace&lt;Name&gt;(e, std::move(name));</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L45"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L45">45</a><span class="src">    <span class="kw">return</span> e;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L46"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L46">46</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L47"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L47">47</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L48"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L48">48</a><span class="src"><span class="cm">// 定義一種部隊：UnitKind{id}＋Name{name}。回傳 def 實體。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L49"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L49">49</a><span class="src"><span class="kw">inline</span> entt::entity define_unit(Zone&amp; root, <span class="kw">uint64_t</span> id, std::string name) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L50"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L50">50</a><span class="src">    detail::require_root(root, <span class="st">&quot;actor::define_unit&quot;</span>);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L51"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L51">51</a><span class="src">    <span class="kw">auto</span> e = root.reg.create();</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L52"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L52">52</a><span class="src">    root.reg.emplace&lt;UnitKind&gt;(e, id);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L53"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L53">53</a><span class="src">    root.reg.emplace&lt;Name&gt;(e, std::move(name));</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L54"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L54">54</a><span class="src">    <span class="kw">return</span> e;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L55"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L55">55</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L56"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L56">56</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L57"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L57">57</a><span class="src"><span class="cm">// 依 id 找地點 def（在 root），找不到回 entt::null。線性掃——def 數量小，</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L58"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L58">58</a><span class="src"><span class="cm">// 需要時再上索引（比照 zone 的 unordered_map）。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L59"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L59">59</a><span class="src"><span class="kw">inline</span> entt::entity find_location_def(<span class="kw">const</span> Zone&amp; root, <span class="kw">uint64_t</span> id) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L60"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L60">60</a><span class="src">    <span class="kw">for</span> (<span class="kw">auto</span> e : root.reg.view&lt;<span class="kw">const</span> LocationKind&gt;())</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L61"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L61">61</a><span class="src">        <span class="kw">if</span> (root.reg.get&lt;<span class="kw">const</span> LocationKind&gt;(e).id == id) <span class="kw">return</span> e;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L62"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L62">62</a><span class="src">    <span class="kw">return</span> entt::null;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L63"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L63">63</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L64"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L64">64</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L65"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L65">65</a><span class="src"><span class="kw">inline</span> entt::entity find_unit_def(<span class="kw">const</span> Zone&amp; root, <span class="kw">uint64_t</span> id) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L66"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L66">66</a><span class="src">    <span class="kw">for</span> (<span class="kw">auto</span> e : root.reg.view&lt;<span class="kw">const</span> UnitKind&gt;())</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L67"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L67">67</a><span class="src">        <span class="kw">if</span> (root.reg.get&lt;<span class="kw">const</span> UnitKind&gt;(e).id == id) <span class="kw">return</span> e;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L68"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L68">68</a><span class="src">    <span class="kw">return</span> entt::null;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L69"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L69">69</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L70"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L70">70</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L71"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L71">71</a><span class="src"><span class="cm">// ---- 實體（建在某個 zone 的 registry）----</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L72"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L72">72</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L73"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L73">73</a><span class="src"><span class="cm">// 建一個地點 actor：Name＋Owner＋Location{kind}。kind＝某 LocationKind def 的 id。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L74"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L74">74</a><span class="src"><span class="kw">inline</span> entt::entity spawn_location(entt::registry&amp; r, <span class="kw">uint64_t</span> kind,</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L75"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L75">75</a><span class="src">                                   std::string name, <span class="kw">uint64_t</span> owner = <span class="nu">0</span>) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L76"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L76">76</a><span class="src">    <span class="kw">auto</span> e = r.create();</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L77"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L77">77</a><span class="src">    r.emplace&lt;Name&gt;(e, std::move(name));</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L78"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L78">78</a><span class="src">    r.emplace&lt;Owner&gt;(e, owner);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L79"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L79">79</a><span class="src">    r.emplace&lt;Location&gt;(e, kind);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L80"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L80">80</a><span class="src">    <span class="kw">return</span> e;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L81"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L81">81</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L82"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L82">82</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L83"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L83">83</a><span class="src"><span class="cm">// 建一個部隊 actor：Name＋Owner＋Unit{kind}。kind＝某 UnitKind def 的 id。</span></span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L84"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L84">84</a><span class="src"><span class="kw">inline</span> entt::entity spawn_unit(entt::registry&amp; r, <span class="kw">uint64_t</span> kind,</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L85"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L85">85</a><span class="src">                               std::string name, <span class="kw">uint64_t</span> owner = <span class="nu">0</span>) {</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L86"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L86">86</a><span class="src">    <span class="kw">auto</span> e = r.create();</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L87"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L87">87</a><span class="src">    r.emplace&lt;Name&gt;(e, std::move(name));</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L88"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L88">88</a><span class="src">    r.emplace&lt;Owner&gt;(e, owner);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L89"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L89">89</a><span class="src">    r.emplace&lt;Unit&gt;(e, kind);</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L90"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L90">90</a><span class="src">    <span class="kw">return</span> e;</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L91"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L91">91</a><span class="src">}</span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L92"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L92">92</a><span class="src"> </span></div>
+<div class="line" id="projects-medp-src-gcore-common-actor-h-L93"><a class="no" href="#projects-medp-src-gcore-common-actor-h-L93">93</a><span class="src">} <span class="cm">// namespace actor</span></span></div>
+  </div>
+</section>
+<nav class="pager"><a href="02-zone-core.html">← 第 2 站 zone/zone.h + tile.h + zone.cpp — 核心資料結構</a><a href="04-world-components.html">第 4 站 world/components/ + world/systems/ — World 專屬積木與 system 範本 →</a></nav>
+
+<footer>由 <code>workflows/common/code-map/html/build.py</code> 生成——真相層是原始碼與
+ <a href="../CODE_TOUR.md">CODE_TOUR.md</a>／<a href="../CODE_TOUR_world_actor.md">CODE_TOUR_world_actor.md</a>／
+<a href="../CODE_MAP.md">CODE_MAP.md</a>；
+程式碼更新後重跑 <code>python build.py</code> 即同步。</footer>
+</body>
+</html>

@@ -8,7 +8,7 @@
 
 | 環境 | 有什麼 | 能做 | 不能做 |
 |------|--------|------|--------|
-| linux 本機（Manjaro） | CMake、C++20 工具鏈 | build / 全部 19 項測試 | Godot 內實測（需 Godot 編輯器） |
+| linux 本機（Manjaro） | CMake、C++20 工具鏈 | build / 全部 21 項測試 | Godot 內實測（需 Godot 編輯器） |
 | windows 本機 | MinGW-w64 g++ 16.1（`C:/dev/mingw64/bin`）、CMake 4.3、vcpkg | build / 測試（generator `MinGW Makefiles`，輸出 `*.windows.debug.64.*`） | — |
 | CI | 未設定 | — | — |
 
